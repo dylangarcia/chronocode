@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>File Watcher Replay</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+            background: #0d1117;
+            color: #c9d1d9;
+            font-size: 13px;
+        }
+
+        /* Upload Screen */
+        .upload-screen {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+        }
+
+        .upload-box {
+            background: #161b22;
+            border: 2px dashed #30363d;
+            border-radius: 12px;
+            padding: 60px 80px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .upload-box:hover {
+            border-color: #58a6ff;
+            background: #1c2128;
+        }
+
+        .upload-box.dragover {
+            border-color: #58a6ff;
+            background: rgba(88, 166, 255, 0.1);
+        }
+
+        .upload-box h2 {
+            color: #58a6ff;
+            font-size: 1.5em;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .upload-box p {
+            color: #8b949e;
+            font-size: 0.9em;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        /* Player Layout - Full Viewport */
+        .player {
+            display: none;
+            height: 100vh;
+            grid-template-rows: auto auto 1fr;
+            grid-template-columns: 1fr 280px;
+            gap: 0;
+        }
+
+        .player.active {
+            display: grid;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 16px;
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            gap: 16px;
+        }
+
+        .logo {
+            font-weight: 600;
+            color: #58a6ff;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        /* Stats Row */
+        .stats-row {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+        }
+
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .stat-icon {
+            font-size: 12px;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .stat-label {
+            color: #8b949e;
+            font-size: 11px;
+        }
+
+        .stat .stat-value { color: #58a6ff; }
+        .stat-created .stat-value { color: #3fb950; }
+        .stat-modified .stat-value { color: #d29922; }
+        .stat-deleted .stat-value { color: #f85149; }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: background 0.15s;
+        }
+
+        .btn:hover {
+            background: #30363d;
+        }
+
+        .btn-primary {
+            background: #238636;
+            border-color: #238636;
+        }
+
+        .btn-primary:hover {
+            background: #2ea043;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .step-display {
+            color: #8b949e;
+            font-size: 12px;
+            min-width: 70px;
+            text-align: center;
+        }
+
+        .speed-select {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            padding: 6px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+
+        /* Timeline */
+        .timeline {
+            grid-column: 1 / -1;
+            padding: 8px 16px;
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .time-label {
+            font-size: 11px;
+            color: #8b949e;
+            min-width: 40px;
+        }
+
+        .progress-track {
+            flex: 1;
+            height: 6px;
+            background: #21262d;
+            border-radius: 3px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #58a6ff;
+            border-radius: 3px;
+            transition: width 0.1s linear;
+        }
+
+        .progress-track:hover .progress-fill {
+            background: #79c0ff;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: #0d1117;
+        }
+
+        /* File Tree */
+        .file-tree {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 0;
+        }
+
+        .file-tree::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .file-tree::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .file-tree::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 4px;
+        }
+
+        .tree-row {
+            display: flex;
+            align-items: center;
+            padding: 3px 16px;
+            cursor: default;
+            white-space: nowrap;
+            transition: background 0.3s, opacity 0.3s;
+        }
+
+        .tree-row:hover {
+            background: #161b22;
+        }
+
+        .tree-row.is-new {
+            background: rgba(63, 185, 80, 0.5) !important;
+            transition: background 1s ease-out;
+        }
+
+        .tree-row.is-modified {
+            background: rgba(210, 153, 34, 0.5) !important;
+            transition: background 1s ease-out;
+        }
+        
+        .tree-row.is-fading {
+            background: transparent;
+        }
+
+        .tree-indent {
+            display: inline-block;
+            width: 20px;
+            color: #484f58;
+        }
+
+        .tree-icon {
+            width: 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .tree-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-right: 8px;
+        }
+
+        .tree-name.is-dir {
+            color: #58a6ff;
+        }
+
+        .tree-size {
+            color: #8b949e;
+            font-size: 11px;
+            min-width: 60px;
+            text-align: right;
+            margin-right: 8px;
+        }
+
+        .tree-status {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 3px;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .tree-status.created {
+            background: rgba(63, 185, 80, 0.2);
+            color: #3fb950;
+        }
+
+        .tree-status.modified {
+            background: rgba(210, 153, 34, 0.2);
+            color: #d29922;
+        }
+
+        /* Event Panel */
+        .event-panel {
+            background: #161b22;
+            border-left: 1px solid #30363d;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 10px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #8b949e;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-header span {
+            color: #58a6ff;
+        }
+
+        .event-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+
+        .event-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .event-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .event-list::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        .event-row {
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            gap: 8px;
+            font-size: 12px;
+            border-bottom: 1px solid #21262d;
+            animation: slide-in 0.2s ease-out;
+        }
+
+        .event-row:first-child {
+            background: rgba(88, 166, 255, 0.1);
+        }
+
+        .event-row:last-child {
+            border-bottom: none;
+        }
+
+        @keyframes slide-in {
+            0% { 
+                opacity: 0; 
+                transform: translateX(-10px);
+            }
+            100% { 
+                opacity: 1; 
+                transform: translateX(0);
+            }
+        }
+
+        .event-type {
+            font-size: 14px;
+            width: 20px;
+            text-align: center;
+        }
+
+        .event-path {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #c9d1d9;
+        }
+
+        .event-row.type-created .event-path { color: #3fb950; }
+        .event-row.type-modified .event-path { color: #d29922; }
+        .event-row.type-deleted .event-path { color: #f85149; }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #484f58;
+            font-size: 13px;
+        }
+
+        /* Keyboard Hints */
+        .kbd-hints {
+            grid-column: 1 / -1;
+            padding: 6px 16px;
+            background: #0d1117;
+            border-top: 1px solid #30363d;
+            display: flex;
+            gap: 16px;
+            font-size: 11px;
+            color: #484f58;
+        }
+
+        kbd {
+            background: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 3px;
+            padding: 2px 5px;
+            font-family: inherit;
+            font-size: 10px;
+            color: #8b949e;
+        }
+
+        /* Responsive: Stack on small screens */
+        @media (max-width: 900px) {
+            .player {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto 1fr auto;
+            }
+            
+            .event-panel {
+                border-left: none;
+                border-top: 1px solid #30363d;
+                max-height: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Upload Screen -->
+    <div class="upload-screen" id="uploadScreen">
+        <div class="upload-box" id="uploadBox">
+            <h2>Drop Recording File</h2>
+            <p>or click to browse (.json)</p>
+            <input type="file" id="fileInput" accept=".json">
+        </div>
+    </div>
+
+    <!-- Player -->
+    <div class="player" id="player">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="logo">File Watcher Replay</div>
+            
+            <div class="stats-row">
+                <div class="stat">
+                    <span class="stat-value" id="statFiles">0</span>
+                    <span class="stat-label">files</span>
+                </div>
+                <div class="stat stat-created">
+                    <span class="stat-value" id="statCreated">0</span>
+                    <span class="stat-label">created</span>
+                </div>
+                <div class="stat stat-modified">
+                    <span class="stat-value" id="statModified">0</span>
+                    <span class="stat-label">modified</span>
+                </div>
+                <div class="stat stat-deleted">
+                    <span class="stat-value" id="statDeleted">0</span>
+                    <span class="stat-label">deleted</span>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button class="btn" id="prevBtn" title="Previous (Left Arrow)">&#9664;</button>
+                <button class="btn btn-primary" id="playBtn" title="Play/Pause (Space)">
+                    <span id="playIcon">&#9654;</span>
+                </button>
+                <button class="btn" id="nextBtn" title="Next (Right Arrow)">&#9654;</button>
+                <span class="step-display" id="stepDisplay">0 / 0</span>
+                <select class="speed-select" id="speedSelect" title="Events per second">
+                    <option value="1">1/sec</option>
+                    <option value="2">2/sec</option>
+                    <option value="5" selected>5/sec</option>
+                    <option value="10">10/sec</option>
+                    <option value="20">20/sec</option>
+                </select>
+                <button class="btn" id="resetBtn" title="Reset (R)">Reset</button>
+                <button class="btn" id="shareBtn" title="Download">Export</button>
+                <button class="btn" id="loadNewBtn" title="Load new file">Load New</button>
+            </div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="timeline">
+            <span class="time-label" id="currentEvent">0</span>
+            <div class="progress-track" id="progressTrack">
+                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+            <span class="time-label" id="totalEvents">0</span>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="file-tree" id="fileTree">
+                <div class="empty-state" id="emptyState">No files yet</div>
+            </div>
+        </div>
+
+        <!-- Event Panel -->
+        <div class="event-panel">
+            <div class="panel-header">
+                Events <span id="eventCount">0</span>
+            </div>
+            <div class="event-list" id="eventList"></div>
+        </div>
+
+        <!-- Keyboard Hints -->
+        <div class="kbd-hints">
+            <span><kbd>Space</kbd> Play/Pause</span>
+            <span><kbd>&#8592;</kbd><kbd>&#8594;</kbd> Step</span>
+            <span><kbd>R</kbd> Reset</span>
+        </div>
+    </div>
+
+    <script>
+        class FileWatcherPlayer {
+            constructor() {
+                this.initialState = [];
+                this.events = [];
+                this.currentState = new Map();
+                this.recentlyChanged = new Set();
+                this.isPlaying = false;
+                this.currentEventIndex = 0;
+                this.eventsPerSecond = 5;
+                this.playbackTimer = null;
+                
+                this.initElements();
+                this.resetUI();
+                this.bindEvents();
+            }
+            
+            resetUI() {
+                // Force clean state on page load (fixes browser caching issues)
+                this.fileInput.value = '';
+                this.uploadScreen.style.display = 'flex';
+                this.player.classList.remove('active');
+                this.speedSelect.value = '5';
+                this.progressFill.style.width = '0%';
+                this.currentEventEl.textContent = '0';
+                this.totalEventsEl.textContent = '0';
+                this.stepDisplay.textContent = '0 / 0';
+                this.eventList.innerHTML = '';
+                this.fileTree.querySelectorAll('.tree-row').forEach(el => el.remove());
+                this.emptyState.style.display = 'flex';
+                this.statFiles.textContent = '0';
+                this.statCreated.textContent = '0';
+                this.statModified.textContent = '0';
+                this.statDeleted.textContent = '0';
+                this.playIcon.innerHTML = '&#9654;';
+                this.prevBtn.disabled = true;
+                this.nextBtn.disabled = true;
+            }
+
+            initElements() {
+                this.uploadScreen = document.getElementById('uploadScreen');
+                this.uploadBox = document.getElementById('uploadBox');
+                this.fileInput = document.getElementById('fileInput');
+                this.player = document.getElementById('player');
+                
+                this.playBtn = document.getElementById('playBtn');
+                this.playIcon = document.getElementById('playIcon');
+                this.prevBtn = document.getElementById('prevBtn');
+                this.nextBtn = document.getElementById('nextBtn');
+                this.resetBtn = document.getElementById('resetBtn');
+                this.shareBtn = document.getElementById('shareBtn');
+                this.loadNewBtn = document.getElementById('loadNewBtn');
+                this.speedSelect = document.getElementById('speedSelect');
+                this.stepDisplay = document.getElementById('stepDisplay');
+                
+                this.progressTrack = document.getElementById('progressTrack');
+                this.progressFill = document.getElementById('progressFill');
+                this.currentEventEl = document.getElementById('currentEvent');
+                this.totalEventsEl = document.getElementById('totalEvents');
+                
+                this.fileTree = document.getElementById('fileTree');
+                this.emptyState = document.getElementById('emptyState');
+                this.eventList = document.getElementById('eventList');
+                this.eventCount = document.getElementById('eventCount');
+                
+                this.statFiles = document.getElementById('statFiles');
+                this.statCreated = document.getElementById('statCreated');
+                this.statModified = document.getElementById('statModified');
+                this.statDeleted = document.getElementById('statDeleted');
+            }
+
+            bindEvents() {
+                // File upload
+                this.uploadBox.addEventListener('click', () => this.fileInput.click());
+                this.fileInput.addEventListener('change', (e) => this.handleFile(e.target.files[0]));
+                
+                // Drag and drop
+                this.uploadBox.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    this.uploadBox.classList.add('dragover');
+                });
+                this.uploadBox.addEventListener('dragleave', () => {
+                    this.uploadBox.classList.remove('dragover');
+                });
+                this.uploadBox.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    this.uploadBox.classList.remove('dragover');
+                    if (e.dataTransfer.files.length) {
+                        this.handleFile(e.dataTransfer.files[0]);
+                    }
+                });
+
+                // Controls
+                this.playBtn.addEventListener('click', () => this.togglePlay());
+                this.prevBtn.addEventListener('click', () => this.stepBackward());
+                this.nextBtn.addEventListener('click', () => this.stepForward());
+                this.resetBtn.addEventListener('click', () => this.reset());
+                this.shareBtn.addEventListener('click', () => this.exportSession());
+                this.loadNewBtn.addEventListener('click', () => this.loadNew());
+                this.speedSelect.addEventListener('change', (e) => {
+                    this.eventsPerSecond = parseFloat(e.target.value);
+                    // Restart playback with new speed if playing
+                    if (this.isPlaying) {
+                        this.pause();
+                        this.play();
+                    }
+                });
+                
+                // Progress bar
+                this.progressTrack.addEventListener('click', (e) => {
+                    const rect = this.progressTrack.getBoundingClientRect();
+                    const percent = (e.clientX - rect.left) / rect.width;
+                    this.seekTo(percent);
+                });
+
+                // Keyboard
+                document.addEventListener('keydown', (e) => {
+                    if (!this.player.classList.contains('active')) return;
+                    if (e.target.tagName === 'SELECT') return;
+                    
+                    switch(e.key) {
+                        case ' ':
+                            e.preventDefault();
+                            this.togglePlay();
+                            break;
+                        case 'ArrowLeft':
+                            e.preventDefault();
+                            this.stepBackward();
+                            break;
+                        case 'ArrowRight':
+                            e.preventDefault();
+                            this.stepForward();
+                            break;
+                        case 'r':
+                        case 'R':
+                            e.preventDefault();
+                            this.reset();
+                            break;
+                    }
+                });
+            }
+
+            handleFile(file) {
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        this.loadSession(data);
+                    } catch (err) {
+                        alert('Invalid JSON file');
+                    }
+                    // Reset file input so same file can be selected again
+                    this.fileInput.value = '';
+                };
+                reader.readAsText(file);
+            }
+
+            loadNew() {
+                // Stop playback
+                this.pause();
+                
+                // Reset state
+                this.initialState = [];
+                this.events = [];
+                this.currentState.clear();
+                this.recentlyChanged.clear();
+                this.currentEventIndex = 0;
+                
+                // Hide player, show upload
+                this.player.classList.remove('active');
+                this.uploadScreen.style.display = 'flex';
+                
+                // Clear UI
+                this.eventList.innerHTML = '';
+                this.fileTree.querySelectorAll('.tree-row').forEach(el => el.remove());
+                this.emptyState.style.display = 'flex';
+                
+                // Reset file input
+                this.fileInput.value = '';
+            }
+
+            loadSession(data) {
+                this.initialState = data.initial_state || [];
+                this.events = data.events || [];
+                
+                // Allow sessions with just initial state and no events
+                if (!this.initialState.length && !this.events.length) {
+                    alert('No data in recording');
+                    return;
+                }
+
+                this.uploadScreen.style.display = 'none';
+                this.player.classList.add('active');
+                
+                this.totalEventsEl.textContent = this.events.length;
+                
+                this.reset();
+                if (this.events.length > 0) {
+                    this.play();
+                }
+            }
+
+            formatSize(bytes) {
+                if (!bytes) return '';
+                const units = ['B', 'KB', 'MB', 'GB'];
+                let size = bytes, i = 0;
+                while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+                return `${size.toFixed(size < 10 ? 1 : 0)} ${units[i]}`;
+            }
+
+            getFileIcon(name, isDir) {
+                if (isDir) return '📁';
+                const ext = name.split('.').pop().toLowerCase();
+                const icons = {
+                    py: '🐍', js: '📜', ts: '📘', jsx: '📜', tsx: '📘',
+                    json: '📋', md: '📝', txt: '📄', html: '🌐', css: '🎨',
+                    png: '🖼', jpg: '🖼', svg: '🖼', gif: '🖼',
+                    mp4: '🎬', mp3: '🎵', zip: '📦', tar: '📦', gz: '📦',
+                    yaml: '⚙️', yml: '⚙️', toml: '⚙️', lock: '🔒', pdf: '📕'
+                };
+                return icons[ext] || '📄';
+            }
+
+            togglePlay() {
+                this.isPlaying ? this.pause() : this.play();
+            }
+
+            play() {
+                if (this.currentEventIndex >= this.events.length) {
+                    this.reset();
+                }
+                this.isPlaying = true;
+                this.playIcon.innerHTML = '&#10074;&#10074;';
+                
+                // Start interval-based playback
+                const intervalMs = 1000 / this.eventsPerSecond;
+                this.playbackTimer = setInterval(() => this.tick(), intervalMs);
+            }
+
+            pause() {
+                this.isPlaying = false;
+                this.playIcon.innerHTML = '&#9654;';
+                if (this.playbackTimer) {
+                    clearInterval(this.playbackTimer);
+                    this.playbackTimer = null;
+                }
+            }
+            
+            tick() {
+                if (this.currentEventIndex >= this.events.length) {
+                    this.pause();
+                    return;
+                }
+                
+                this.recentlyChanged.clear();
+                this.applyEvent(this.events[this.currentEventIndex], true, true);
+                this.currentEventIndex++;
+                
+                this.updateDisplay();
+                this.updateProgress();
+                this.updateStepDisplay();
+            }
+
+            reset() {
+                this.pause();
+                this.currentEventIndex = 0;
+                this.currentState.clear();
+                this.recentlyChanged.clear();
+                this.eventList.innerHTML = '';
+                
+                // Load initial state (files that existed before recording started)
+                this.loadInitialState();
+                
+                this.updateDisplay();
+                this.updateProgress();
+                this.updateStats();
+                this.updateStepDisplay();
+            }
+
+            stepForward() {
+                if (this.isPlaying) this.pause();
+                if (this.currentEventIndex < this.events.length) {
+                    this.recentlyChanged.clear();
+                    this.applyEvent(this.events[this.currentEventIndex], true, true);
+                    this.currentEventIndex++;
+                    this.updateDisplay();
+                    this.updateProgress();
+                    this.updateStepDisplay();
+                }
+            }
+
+            loadInitialState() {
+                // Load initial state (files that existed before recording started)
+                for (const item of this.initialState) {
+                    this.currentState.set(item.path, {
+                        path: item.path,
+                        size: item.size,
+                        is_dir: item.is_dir,
+                        status: null
+                    });
+                }
+            }
+
+            stepBackward() {
+                if (this.isPlaying) this.pause();
+                if (this.currentEventIndex > 0) {
+                    this.currentEventIndex--;
+                    this.currentState.clear();
+                    this.recentlyChanged.clear();
+                    this.eventList.innerHTML = '';
+                    
+                    // Start from initial state
+                    this.loadInitialState();
+                    
+                    for (let i = 0; i < this.currentEventIndex; i++) {
+                        this.applyEvent(this.events[i], false, false);
+                    }
+                    // Rebuild event log
+                    for (let i = Math.max(0, this.currentEventIndex - 100); i < this.currentEventIndex; i++) {
+                        this.addEventLogEntry(this.events[i]);
+                    }
+                    this.updateDisplay();
+                    this.updateProgress();
+                    this.updateStats();
+                    this.updateStepDisplay();
+                }
+            }
+
+            seekTo(percent) {
+                if (this.isPlaying) this.pause();
+                this.currentEventIndex = Math.round(percent * this.events.length);
+                if (this.currentEventIndex > this.events.length) this.currentEventIndex = this.events.length;
+                
+                this.currentState.clear();
+                this.recentlyChanged.clear();
+                this.eventList.innerHTML = '';
+                
+                // Start from initial state
+                this.loadInitialState();
+                
+                for (let i = 0; i < this.currentEventIndex; i++) {
+                    this.applyEvent(this.events[i], false, false);
+                }
+                // Rebuild event log (last 100)
+                for (let i = Math.max(0, this.currentEventIndex - 100); i < this.currentEventIndex; i++) {
+                    this.addEventLogEntry(this.events[i]);
+                }
+                this.updateDisplay();
+                this.updateProgress();
+                this.updateStats();
+                this.updateStepDisplay();
+            }
+
+            applyEvent(event, logIt, trackChange = true) {
+                const path = event.path;
+                
+                if (event.event_type === 'deleted') {
+                    this.currentState.delete(path);
+                } else {
+                    this.currentState.set(path, {
+                        path,
+                        size: event.size,
+                        is_dir: event.is_dir,
+                        status: event.event_type
+                    });
+                }
+                
+                // Track this path as recently changed for animation
+                if (trackChange) {
+                    this.recentlyChanged.add(path);
+                }
+                
+                if (logIt) {
+                    this.addEventLogEntry(event);
+                    this.updateStats();
+                }
+            }
+
+            buildTree() {
+                // Build hierarchical tree structure from flat paths
+                const root = { name: '', children: new Map(), isDir: true };
+                
+                for (const [path, info] of this.currentState) {
+                    const parts = path.split('/').filter(p => p);
+                    let current = root;
+                    
+                    // Create/traverse directory structure
+                    for (let i = 0; i < parts.length - 1; i++) {
+                        const part = parts[i];
+                        if (!current.children.has(part)) {
+                            current.children.set(part, {
+                                name: part,
+                                children: new Map(),
+                                isDir: true,
+                                path: parts.slice(0, i + 1).join('/')
+                            });
+                        }
+                        current = current.children.get(part);
+                    }
+                    
+                    // Add the file/final item
+                    const name = parts[parts.length - 1];
+                    current.children.set(name, {
+                        name: name,
+                        children: new Map(),
+                        isDir: info.is_dir,
+                        path: path,
+                        size: info.size,
+                        status: info.status
+                    });
+                }
+                
+                return root;
+            }
+            
+            flattenTree(node, depth = 0, result = []) {
+                // Sort children: directories first, then alphabetically
+                const sorted = Array.from(node.children.values()).sort((a, b) => {
+                    if (a.isDir !== b.isDir) return b.isDir - a.isDir;
+                    return a.name.localeCompare(b.name);
+                });
+                
+                for (const child of sorted) {
+                    result.push({ ...child, depth });
+                    if (child.isDir && child.children.size > 0) {
+                        this.flattenTree(child, depth + 1, result);
+                    }
+                }
+                
+                return result;
+            }
+
+            updateDisplay() {
+                // Clear and rebuild entire tree (simpler and ensures correctness)
+                this.fileTree.querySelectorAll('.tree-row').forEach(el => el.remove());
+                
+                if (this.currentState.size === 0) {
+                    this.emptyState.style.display = 'flex';
+                    return;
+                }
+                this.emptyState.style.display = 'none';
+                
+                // Build hierarchical tree and flatten for display
+                const tree = this.buildTree();
+                const items = this.flattenTree(tree);
+                
+                const fragment = document.createDocumentFragment();
+                
+                for (const item of items) {
+                    const row = document.createElement('div');
+                    row.className = 'tree-row';
+                    row.dataset.path = item.path;
+                    
+                    // Build indent
+                    let indent = '';
+                    for (let i = 0; i < item.depth; i++) {
+                        indent += '<span class="tree-indent"></span>';
+                    }
+                    
+                    const icon = this.getFileIcon(item.name, item.isDir);
+                    const size = item.isDir ? '' : this.formatSize(item.size || 0);
+                    const statusHtml = item.status ? 
+                        `<span class="tree-status ${item.status}">${item.status.substring(0, 3).toUpperCase()}</span>` : '';
+                    
+                    row.innerHTML = `${indent}<span class="tree-icon">${icon}</span><span class="tree-name ${item.isDir ? 'is-dir' : ''}">${item.name}</span><span class="tree-size">${size}</span>${statusHtml}`;
+                    
+                    // Apply highlight animation only for recently changed items
+                    const isRecentlyChanged = this.recentlyChanged.has(item.path);
+                    if (isRecentlyChanged) {
+                        if (item.status === 'created') row.classList.add('is-new');
+                        if (item.status === 'modified') row.classList.add('is-modified');
+                        
+                        // Fade out highlight after 2 seconds
+                        setTimeout(() => {
+                            row.classList.add('is-fading');
+                            row.classList.remove('is-new', 'is-modified');
+                            // Remove fading class after transition completes
+                            setTimeout(() => row.classList.remove('is-fading'), 1000);
+                        }, 2000);
+                    }
+                    
+                    fragment.appendChild(row);
+                }
+                
+                this.fileTree.appendChild(fragment);
+            }
+
+            addEventLogEntry(event) {
+                const icons = { created: '✨', modified: '✏️', deleted: '🗑️' };
+                const fileName = event.path.split('/').pop();
+                
+                const row = document.createElement('div');
+                row.className = `event-row type-${event.event_type}`;
+                row.innerHTML = `
+                    <span class="event-type">${icons[event.event_type]}</span>
+                    <span class="event-path" title="${event.path}">${fileName}</span>
+                `;
+                
+                this.eventList.insertBefore(row, this.eventList.firstChild);
+                
+                // Limit visible events
+                while (this.eventList.children.length > 100) {
+                    this.eventList.removeChild(this.eventList.lastChild);
+                }
+                
+                this.eventCount.textContent = this.currentEventIndex;
+            }
+
+            updateProgress() {
+                const percent = this.events.length ? (this.currentEventIndex / this.events.length) * 100 : 0;
+                this.progressFill.style.width = `${percent}%`;
+                this.currentEventEl.textContent = this.currentEventIndex;
+            }
+
+            updateStats() {
+                let created = 0, modified = 0, deleted = 0;
+                for (let i = 0; i < this.currentEventIndex; i++) {
+                    const e = this.events[i];
+                    if (e.event_type === 'created') created++;
+                    else if (e.event_type === 'modified') modified++;
+                    else if (e.event_type === 'deleted') deleted++;
+                }
+                this.statFiles.textContent = this.currentState.size;
+                this.statCreated.textContent = created;
+                this.statModified.textContent = modified;
+                this.statDeleted.textContent = deleted;
+            }
+
+            updateStepDisplay() {
+                this.stepDisplay.textContent = `${this.currentEventIndex} / ${this.events.length}`;
+                this.prevBtn.disabled = this.currentEventIndex === 0;
+                this.nextBtn.disabled = this.currentEventIndex >= this.events.length;
+            }
+
+            exportSession() {
+                const dataStr = JSON.stringify({ events: this.events }, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'filewatcher-session.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        new FileWatcherPlayer();
+    </script>
+</body>
+</html>

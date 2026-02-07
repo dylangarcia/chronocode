@@ -1,0 +1,7 @@
+venv/
+.venv/
+test_dir/
+__pycache__/
+*.pyc
+.DS_Store
+uv.lock

@@ -1,0 +1,1398 @@
+{
+  "start_time": 1770485792.812713,
+  "events": [
+    {
+      "timestamp": 0.10471606254577637,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/update.sample",
+      "size": 3650,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10472607612609863,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/post-update.sample",
+      "size": 189,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10473012924194336,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 0.10473227500915527,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/refs/heads",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 0.10473299026489258,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/commit-msg.sample",
+      "size": 896,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10473513603210449,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/refs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 0.1047360897064209,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/info",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 0.10474014282226562,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/filewatcher.py",
+      "size": 39890,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10474109649658203,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/pyproject.toml",
+      "size": 452,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10474228858947754,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/prepare-commit-msg.sample",
+      "size": 1492,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10474300384521484,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/objects/info",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 0.10474395751953125,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/applypatch-msg.sample",
+      "size": 478,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10474491119384766,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/push-to-checkout.sample",
+      "size": 2783,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10474610328674316,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/pre-applypatch.sample",
+      "size": 424,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10474705696105957,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/pre-receive.sample",
+      "size": 544,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10474801063537598,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/config",
+      "size": 137,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10474920272827148,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.gitignore",
+      "size": 60,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10475015640258789,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/HEAD",
+      "size": 21,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.1047511100769043,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/objects",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 0.1047520637512207,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/pre-merge-commit.sample",
+      "size": 416,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10475325584411621,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/objects/pack",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 0.10475492477416992,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo.sh",
+      "size": 1351,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10475611686706543,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/pre-rebase.sample",
+      "size": 4898,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10475707054138184,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/sendemail-validate.sample",
+      "size": 2308,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10475897789001465,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/README.md",
+      "size": 6977,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10476016998291016,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/filewatcher",
+      "size": 160,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10476207733154297,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/refs/tags",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 0.10476326942443848,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/description",
+      "size": 73,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10476493835449219,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/fsmonitor-watchman.sample",
+      "size": 4726,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.1047658920288086,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 0.10476803779602051,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/pre-commit.sample",
+      "size": 1649,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10476899147033691,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/hooks/pre-push.sample",
+      "size": 1374,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10477018356323242,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/.git/info/exclude",
+      "size": 240,
+      "is_dir": false
+    },
+    {
+      "timestamp": 0.10477209091186523,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 0.10477328300476074,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/requirements.txt",
+      "size": 193,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.5084102153778,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 197.50841808319092,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.50842022895813,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.50842118263245,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 197.50842213630676,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 197.50842213630676,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.50842332839966,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 197.5084240436554,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.5084249973297,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.50842809677124,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 197.61079597473145,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 197.61080408096313,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.61080718040466,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.6108090877533,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 197.6108102798462,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 197.6108112335205,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.61081218719482,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 197.61081290245056,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.61081504821777,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 197.6108160018921,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 207.3241240978241,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher/filewatcher.py",
+      "size": 43761,
+      "is_dir": false
+    },
+    {
+      "timestamp": 217.13660216331482,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 222.2182891368866,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 222.21830010414124,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 222.21830201148987,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 222.21830415725708,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 222.2183051109314,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 222.21830701828003,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 222.21830821037292,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 222.21831011772156,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 222.2183120250702,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 222.21831393241882,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 222.32938599586487,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 222.3293960094452,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 222.32940006256104,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 222.32940220832825,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 222.32940411567688,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 222.3294050693512,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 222.32940697669983,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 222.32940816879272,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 222.32941007614136,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 222.32941603660583,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 223.31624603271484,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 223.316260099411,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 223.31626224517822,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 223.31626391410828,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 223.3162660598755,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 223.31626796722412,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 223.31627011299133,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 223.31627225875854,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 0,
+      "is_dir": false
+    },
+    {
+      "timestamp": 223.31627321243286,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 223.3162760734558,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 223.42013502120972,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 223.42014408111572,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 223.42014694213867,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 223.42014908790588,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 223.42015099525452,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 223.42015314102173,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 223.42015624046326,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 223.4201579093933,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 0,
+      "is_dir": false
+    },
+    {
+      "timestamp": 223.42016005516052,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 223.42016315460205,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 224.23903703689575,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 224.2390480041504,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 224.23905110359192,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 224.23905420303345,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 224.23905730247498,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 224.23905897140503,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 224.23906207084656,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 224.23906421661377,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 0,
+      "is_dir": false
+    },
+    {
+      "timestamp": 224.2390661239624,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 224.23906898498535,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 224.34364795684814,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 224.34365916252136,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 224.34366416931152,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 224.34366703033447,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 224.3436689376831,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 224.34367322921753,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 224.34367513656616,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 224.3436779975891,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 0,
+      "is_dir": false
+    },
+    {
+      "timestamp": 224.34368014335632,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 224.34368324279785,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 225.76199913024902,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher/filewatcher.py",
+      "size": 44522,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.29579210281372,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 234.29580998420715,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.29581427574158,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.29581689834595,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 234.29581999778748,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 234.295823097229,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.29582595825195,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 234.29582905769348,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.29583311080933,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.2958369255066,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 234.39937615394592,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 234.39939093589783,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.39939522743225,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.3993980884552,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 234.39940094947815,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 234.39940404891968,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.3994061946869,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 234.39940929412842,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.3994119167328,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 234.3994140625,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 235.52999925613403,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 235.53001499176025,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.530020236969,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.53002405166626,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 235.5300281047821,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 235.53003311157227,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.53003692626953,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 235.53004217147827,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.53004598617554,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.5300521850586,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher/filewatcher.py",
+      "size": 44132,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.5300669670105,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 235.6474711894989,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 235.64748907089233,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.6474952697754,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.64750003814697,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 235.64750409126282,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.64750790596008,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 235.6475121974945,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.64751529693604,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 235.7614221572876,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 235.76144003868103,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 236.91700911521912,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 236.9170310497284,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 236.91703605651855,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 236.9170401096344,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 236.91704392433167,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 236.9170491695404,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 236.91705298423767,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 236.91705703735352,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 236.91706109046936,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 236.91706490516663,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.02504110336304,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.02506303787231,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.0250689983368,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.02507328987122,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.02507901191711,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.02508330345154,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.0250871181488,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.02509117126465,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.02509593963623,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.02509999275208,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.70643615722656,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.70645928382874,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.70646500587463,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.7064709663391,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.70647501945496,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.7064802646637,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.70648503303528,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.70648908615112,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.7064929008484,
+      "event_type": "created",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.70649814605713,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.82083821296692,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.82086086273193,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/README.md",
+      "size": 9,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.82086610794067,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/utils.js",
+      "size": 12,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.82087016105652,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/docs",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.82087516784668,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.82087922096252,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/src/main.py",
+      "size": 15,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.8208830356598,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests",
+      "size": 0,
+      "is_dir": true
+    },
+    {
+      "timestamp": 237.82088804244995,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/.gitignore",
+      "size": 33,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.8208930492401,
+      "event_type": "deleted",
+      "path": "/Users/dylan/code/filewatcher/demo_project/tests/test_main.py",
+      "size": 5,
+      "is_dir": false
+    },
+    {
+      "timestamp": 237.82089805603027,
+      "event_type": "modified",
+      "path": "/Users/dylan/code/filewatcher",
+      "size": 0,
+      "is_dir": true
+    }
+  ]
+}

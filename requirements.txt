@@ -1,0 +1,5 @@
+# Dependencies are defined in pyproject.toml
+# This file is kept for backwards compatibility with pip
+# For uv users: dependencies are automatically managed via pyproject.toml
+
+watchdog>=3.0.0
