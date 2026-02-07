@@ -1,8 +1,23 @@
-venv/
-.venv/
-test_dir/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# OS
 .DS_Store
+
+# Project specific
+recordings/
+chronocode-viewer.html
+
+# Tools
+.ruff_cache/
+.mypy_cache/
 uv.lock
-recordings/*
