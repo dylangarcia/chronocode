@@ -79,8 +79,11 @@ pip install -r requirements.txt
 This is the killer feature! Record an AI agent developing a project and replay it later:
 
 ```bash
-# Record a session
+# Record a session (metadata only - small file size)
 ./filewatcher -r session.json /path/to/project
+
+# Record with file contents (enables content preview/diff in viewer)
+./filewatcher -r session.json -c /path/to/project
 
 # Replay the session (shows the evolution over time!)
 ./filewatcher --replay session.json /path/to/project
@@ -116,6 +119,7 @@ This is the killer feature! Record an AI agent developing a project and replay i
 - `--no-gitignore` - Do not respect .gitignore files
 - `--no-stats` - Disable the statistics dashboard
 - `-r FILE, --record FILE` - Record events to a JSON file
+- `-c, --content` - Include file contents in recording (for content preview/diff)
 - `--replay FILE` - Replay events from a JSON file
 - `--replay-speed SPEED` - Replay speed multiplier (default: 1.0)
 

@@ -188,6 +188,105 @@ def format_delta(value: int, is_size: bool = True) -> Tuple[str, str]:
     return delta_str, color
 
 
+# Maximum file size to capture content (100KB)
+MAX_CONTENT_SIZE = 100 * 1024
+
+# Text file extensions for content capture
+TEXT_EXTENSIONS = {
+    "py",
+    "js",
+    "ts",
+    "jsx",
+    "tsx",
+    "json",
+    "md",
+    "txt",
+    "html",
+    "css",
+    "yaml",
+    "yml",
+    "toml",
+    "ini",
+    "conf",
+    "cfg",
+    "sh",
+    "bash",
+    "zsh",
+    "xml",
+    "svg",
+    "sql",
+    "rb",
+    "go",
+    "rs",
+    "java",
+    "c",
+    "cpp",
+    "h",
+    "hpp",
+    "swift",
+    "kt",
+    "scala",
+    "php",
+    "pl",
+    "pm",
+    "r",
+    "lua",
+    "vim",
+    "el",
+    "clj",
+    "cljs",
+    "ex",
+    "exs",
+    "erl",
+    "hrl",
+    "hs",
+    "ml",
+    "mli",
+    "fs",
+    "fsi",
+    "vue",
+    "svelte",
+    "astro",
+    "graphql",
+    "gql",
+    "proto",
+    "dockerfile",
+    "makefile",
+    "cmake",
+    "gradle",
+    "pom",
+    "env",
+    "gitignore",
+    "gitattributes",
+}
+
+
+def is_text_file(path: Path) -> bool:
+    """Check if a file is likely a text file based on extension."""
+    name = path.name.lower()
+    # Check exact name matches (like Makefile, Dockerfile)
+    if name in {"makefile", "dockerfile", "gemfile", "rakefile", "procfile"}:
+        return True
+    # Check extension
+    ext = name.split(".")[-1] if "." in name else ""
+    return ext in TEXT_EXTENSIONS
+
+
+def read_file_content(path: Path, max_size: int = MAX_CONTENT_SIZE) -> Optional[str]:
+    """Read file content if it's a text file and not too large."""
+    try:
+        if not path.is_file():
+            return None
+        if path.stat().st_size > max_size:
+            return None
+        if not is_text_file(path):
+            return None
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except (IOError, PermissionError, OSError):
+        return None
+
+
 @dataclass
 class FileEvent:
     """Represents a single file system event."""
@@ -197,41 +296,77 @@ class FileEvent:
     path: str
     size: int = 0
     is_dir: bool = False
+    content: Optional[str] = None  # File content for created/modified events
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "timestamp": self.timestamp,
             "event_type": self.event_type,
             "path": self.path,
             "size": self.size,
             "is_dir": self.is_dir,
         }
+        if self.content is not None:
+            result["content"] = self.content
+        return result
 
     @classmethod
     def from_dict(cls, data: dict) -> "FileEvent":
-        return cls(**data)
+        return cls(
+            timestamp=data["timestamp"],
+            event_type=data["event_type"],
+            path=data["path"],
+            size=data.get("size", 0),
+            is_dir=data.get("is_dir", False),
+            content=data.get("content"),
+        )
 
 
 class EventLogger:
     """Logs file system events for later replay with continuous file writing."""
 
-    def __init__(self, output_path: Optional[Path] = None):
+    def __init__(
+        self,
+        output_path: Optional[Path] = None,
+        root_path: Optional[Path] = None,
+        record_content: bool = False,
+    ):
         self.events: List[FileEvent] = []
         self.initial_state: List[dict] = []  # Snapshot of files at start
         self.start_time: Optional[float] = None
         self.output_path = output_path
+        self.root_path = root_path  # Used to convert absolute paths to relative
+        self.record_content = record_content  # Whether to capture file contents
+
+    def _to_relative_path(self, path: Path) -> str:
+        """Convert an absolute path to a relative path from root."""
+        if self.root_path is None:
+            return str(path)
+        try:
+            rel_path = path.relative_to(self.root_path)
+            # Return "." for the root directory itself
+            if str(rel_path) == ".":
+                return "."
+            return str(rel_path)
+        except ValueError:
+            # Path is not relative to root, return as-is
+            return str(path)
 
     def set_initial_state(self, file_infos: Dict[Path, "FileInfo"]):
         """Capture the initial state of all files."""
         self.initial_state = []
         for path, info in file_infos.items():
-            self.initial_state.append(
-                {
-                    "path": str(path),
-                    "size": info.size,
-                    "is_dir": info.is_dir,
-                }
-            )
+            item = {
+                "path": self._to_relative_path(path),
+                "size": info.size,
+                "is_dir": info.is_dir,
+            }
+            # Capture content for text files (only if enabled)
+            if self.record_content and not info.is_dir:
+                content = read_file_content(path)
+                if content is not None:
+                    item["content"] = content
+            self.initial_state.append(item)
 
     def start_recording(self):
         """Start recording events and initialize output file."""
@@ -268,12 +403,22 @@ class EventLogger:
         if self.start_time is None:
             self.start_time = time.time()
 
+        # Capture content for created/modified text files (only if enabled)
+        content = None
+        if (
+            self.record_content
+            and event_type in (EventType.CREATED, EventType.MODIFIED)
+            and not is_dir
+        ):
+            content = read_file_content(path)
+
         event = FileEvent(
             timestamp=time.time() - self.start_time,
             event_type=event_type.value,
-            path=str(path),
+            path=self._to_relative_path(path),
             size=size,
             is_dir=is_dir,
+            content=content,
         )
         self.events.append(event)
 
@@ -563,6 +708,15 @@ class ChangeTracker:
                 return True
         return False
 
+    def _is_recordings_path(self, path: Path) -> bool:
+        """Check if a path is inside the recordings directory."""
+        try:
+            rel_path = path.relative_to(self.root_path)
+            parts = rel_path.parts
+            return len(parts) > 0 and parts[0] == "recordings"
+        except ValueError:
+            return False
+
     def scan_directory(self, root_path: Path) -> Dict[Path, FileInfo]:
         """Scan directory and return file info dictionary."""
         state = {}
@@ -582,6 +736,10 @@ class ChangeTracker:
 
                 # Skip hidden files/folders unless show_hidden is True
                 if not self.show_hidden and self._is_hidden_path(path):
+                    continue
+
+                # Skip recordings directory (don't track our own recording files)
+                if self._is_recordings_path(path):
                     continue
 
                 # Check gitignore if enabled
@@ -1355,6 +1513,13 @@ Examples:
     )
 
     parser.add_argument(
+        "-c",
+        "--content",
+        action="store_true",
+        help="Record file contents in addition to metadata (makes recordings larger)",
+    )
+
+    parser.add_argument(
         "--replay",
         type=str,
         metavar="FILE",
@@ -1466,8 +1631,13 @@ Examples:
                 record_path = recordings_dir / user_path
             else:
                 record_path = user_path
-        event_logger = EventLogger(output_path=record_path)
-        print(f"🔴 Recording to: {record_path} (continuous write)")
+        event_logger = EventLogger(
+            output_path=record_path,
+            root_path=root_path,
+            record_content=args.content,
+        )
+        content_msg = " with file contents" if args.content else ""
+        print(f"🔴 Recording to: {record_path}{content_msg}")
 
     watcher = FileWatcher(
         root_path,
