@@ -1,6 +1,6 @@
 #!/bin/bash
-# Wrapper script to run filewatcher with uv
+# Wrapper script to run chronocode with uv
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
-uv run filewatcher.py "$@"
+uv run chronocode.py "$@"

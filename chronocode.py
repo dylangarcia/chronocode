@@ -1534,7 +1534,39 @@ Examples:
         help="Replay speed multiplier (default: 1.0, use 2.0 for 2x speed)",
     )
 
+    parser.add_argument(
+        "--viewer",
+        action="store_true",
+        help="Open the web-based replay viewer",
+    )
+
     args = parser.parse_args()
+
+    # Handle viewer mode
+    if args.viewer:
+        import shutil
+        import webbrowser
+
+        # Find replay.html relative to this script
+        script_dir = Path(__file__).parent
+        viewer_src = script_dir / "replay.html"
+
+        if not viewer_src.exists():
+            print(f"Error: replay.html not found at {viewer_src}")
+            sys.exit(1)
+
+        # Copy to current directory if not there
+        viewer_dst = Path("chronocode-viewer.html")
+        if not viewer_dst.exists():
+            shutil.copy(viewer_src, viewer_dst)
+            print(f"📄 Copied viewer to: {viewer_dst.absolute()}")
+        else:
+            print(f"📄 Viewer already exists: {viewer_dst.absolute()}")
+
+        # Open in browser
+        webbrowser.open(f"file://{viewer_dst.absolute()}")
+        print("🌐 Opened viewer in browser")
+        sys.exit(0)
 
     # Handle replay mode
     if args.replay:
