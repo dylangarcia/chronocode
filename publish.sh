@@ -42,9 +42,7 @@ fi
 # Ensure we're on main
 BRANCH=$(git branch --show-current)
 if [ "$BRANCH" != "main" ]; then
-    warn "Not on main (on '$BRANCH'). Continue anyway? [y/N]"
-    read -r REPLY
-    [ "$REPLY" = "y" ] || exit 1
+    warn "Not on main (on '$BRANCH'), continuing anyway..."
 fi
 
 # ---------------------------------------------------------------------------
@@ -106,21 +104,6 @@ echo ""
 warn "Crate size:  $CRATE_SIZE"
 warn "Binary size: $BINARY_SIZE"
 echo ""
-
-# ---------------------------------------------------------------------------
-# Confirm
-# ---------------------------------------------------------------------------
-
-echo -e "${YELLOW}Ready to publish chronocode $NEW_VERSION${NC}"
-echo "  This will:"
-echo "    1. Commit version bump"
-echo "    2. Tag v$NEW_VERSION"
-echo "    3. Push to origin"
-echo "    4. Publish to crates.io"
-echo ""
-echo -n "Proceed? [y/N] "
-read -r REPLY
-[ "$REPLY" = "y" ] || { git checkout Cargo.toml Cargo.lock; die "Aborted."; }
 
 # ---------------------------------------------------------------------------
 # Git commit + tag + push

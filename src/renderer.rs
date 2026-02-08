@@ -186,7 +186,13 @@ fn filter_node(node: &TreeNode, query_lower: &str) -> Option<TreeNode> {
 // Tree line rendering
 // ---------------------------------------------------------------------------
 
-/// Recursively build styled `Line`s representing the file tree.
+/// Recursively build styled `Line`s representing the file tree, emitting only
+/// lines that fall within the visible viewport window (`visible_start..visible_end`).
+///
+/// `line_index` is a mutable counter tracking the current global line position
+/// across the entire tree traversal.  Lines before `visible_start` increment
+/// the counter without allocating `Line` objects; once past `visible_end` the
+/// recursion short-circuits.
 ///
 /// # Arguments
 ///
@@ -200,6 +206,9 @@ fn filter_node(node: &TreeNode, query_lower: &str) -> Option<TreeNode> {
 /// * `max_depth`      - Optional limit on tree depth.
 /// * `max_files`      - Optional limit on files shown per directory level.
 /// * `current_depth`  - The current recursion depth (starts at 0).
+/// * `visible_start`  - First visible line index (inclusive).
+/// * `visible_end`    - Last visible line index (exclusive).
+/// * `line_index`     - Global line counter (mutated during traversal).
 /// * `lines`          - Output vector to which rendered `Line`s are appended.
 #[allow(clippy::too_many_arguments)]
 pub fn render_tree_lines(
@@ -211,15 +220,21 @@ pub fn render_tree_lines(
     max_depth: Option<usize>,
     max_files: Option<usize>,
     current_depth: usize,
+    visible_start: usize,
+    visible_end: usize,
+    line_index: &mut usize,
     lines: &mut Vec<Line<'static>>,
 ) {
     // If we have exceeded the maximum depth, emit a placeholder and return.
     if let Some(md) = max_depth {
         if current_depth > md {
-            lines.push(Line::from(vec![Span::styled(
-                format!("{}...", prefix),
-                Style::default().fg(Color::DarkGray),
-            )]));
+            if *line_index >= visible_start && *line_index < visible_end {
+                lines.push(Line::from(vec![Span::styled(
+                    format!("{}...", prefix),
+                    Style::default().fg(Color::DarkGray),
+                )]));
+            }
+            *line_index += 1;
             return;
         }
     }
@@ -231,12 +246,20 @@ pub fn render_tree_lines(
     };
 
     for (i, node) in nodes.iter().enumerate() {
+        // Early exit: all remaining lines are past the viewport.
+        if *line_index >= visible_end {
+            return;
+        }
+
         if i >= display_count {
-            let remaining = total - display_count;
-            lines.push(Line::from(vec![Span::styled(
-                format!("{}... and {} more", prefix, remaining),
-                Style::default().fg(Color::DarkGray),
-            )]));
+            if *line_index >= visible_start && *line_index < visible_end {
+                let remaining = total - display_count;
+                lines.push(Line::from(vec![Span::styled(
+                    format!("{}... and {} more", prefix, remaining),
+                    Style::default().fg(Color::DarkGray),
+                )]));
+            }
+            *line_index += 1;
             break;
         }
 
@@ -248,138 +271,195 @@ pub fn render_tree_lines(
             format!("{}│   ", prefix)
         };
 
-        // --- Build spans for this line ---
+        let visible = *line_index >= visible_start && *line_index < visible_end;
 
-        let mut spans: Vec<Span<'static>> = Vec::new();
+        if visible {
+            // --- Build spans for this line ---
 
-        // Track the visual (display) width consumed so far.
-        let mut used_width: usize = 0;
+            let mut spans: Vec<Span<'static>> = Vec::new();
 
-        // 1. Prefix + connector
-        let prefix_str = format!("{}{}", prefix, connector);
-        used_width += UnicodeWidthStr::width(prefix_str.as_str());
-        spans.push(Span::styled(
-            prefix_str,
-            Style::default().fg(Color::DarkGray),
-        ));
+            // Track the visual (display) width consumed so far.
+            let mut used_width: usize = 0;
 
-        // 2. Emoji
-        let emoji = get_file_emoji(&node.name, node.is_dir);
-        let emoji_str = format!("{} ", emoji);
-        used_width += UnicodeWidthStr::width(emoji_str.as_str());
-        spans.push(Span::raw(emoji_str));
-
-        // 3. Name -- colored by change status
-        let (name_color, status_text) = if changes.added.contains(&node.path) {
-            (Color::Green, "NEW")
-        } else if changes.modified.contains(&node.path) {
-            (Color::Yellow, "MOD")
-        } else if changes.deleted.contains(&node.path) {
-            (Color::Red, "DEL")
-        } else {
-            (Color::White, "")
-        };
-
-        let name_style = if node.is_dir {
-            Style::default().fg(name_color).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(name_color)
-        };
-
-        used_width += UnicodeWidthStr::width(node.name.as_str());
-        spans.push(Span::styled(node.name.clone(), name_style));
-
-        // 4. Pad the name portion to fill the Name column (1 + NAME_WIDTH),
-        //    then render the status badge in the Status column.
-        let name_col_end = 1 + NAME_WIDTH as usize;
-        let name_pad = if used_width < name_col_end {
-            name_col_end - used_width
-        } else {
-            1 // at least one space if the name is very long
-        };
-        spans.push(Span::raw(" ".repeat(name_pad)));
-
-        // 5. Status badge — rendered at the start of the Status column.
-        if !status_text.is_empty() {
-            let badge_color = match status_text {
-                "NEW" => Color::Green,
-                "MOD" => Color::Yellow,
-                "DEL" => Color::Red,
-                _ => Color::Reset,
-            };
-            let badge = format!("[{}]", status_text);
-            let badge_width = badge.len();
+            // 1. Prefix + connector
+            let prefix_str = format!("{}{}", prefix, connector);
+            used_width += UnicodeWidthStr::width(prefix_str.as_str());
             spans.push(Span::styled(
-                badge,
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(badge_color)
-                    .add_modifier(Modifier::BOLD),
+                prefix_str,
+                Style::default().fg(Color::DarkGray),
             ));
-            // Pad the rest of the Status column after the badge.
-            let status_pad = (STATUS_WIDTH as usize).saturating_sub(badge_width);
-            spans.push(Span::raw(" ".repeat(status_pad)));
-        } else {
-            // No status — fill the entire Status column with spaces.
-            spans.push(Span::raw(" ".repeat(STATUS_WIDTH as usize)));
-        }
 
-        // For files (not dirs), show size, delta, LOC, LOC delta as
-        // fixed-width right-aligned columns.
-        if !node.is_dir {
-            if let Some(info) = state.get(&node.path) {
-                // 6. Size (right-aligned, SIZE_WIDTH)
-                let size_str = format_size(info.size);
-                let size_color = color_from_name(get_size_color(info.size));
-                spans.push(Span::styled(
-                    format!("{:>width$}", size_str, width = SIZE_WIDTH as usize),
-                    Style::default().fg(size_color),
-                ));
+            // 2. Emoji
+            let emoji = get_file_emoji(&node.name, node.is_dir);
+            let emoji_str = format!("{} ", emoji);
+            used_width += UnicodeWidthStr::width(emoji_str.as_str());
+            spans.push(Span::raw(emoji_str));
 
-                // 7. Size delta (right-aligned, DELTA_WIDTH)
-                let prev_size = previous_state.get(&node.path).map(|p| p.size).unwrap_or(0);
-                let size_delta = info.size as i64 - prev_size as i64;
-                let (delta_str, delta_color_name) = format_delta(size_delta, true);
-                spans.push(Span::styled(
-                    format!("{:>width$}", delta_str, width = DELTA_WIDTH as usize),
-                    Style::default().fg(color_from_name(delta_color_name)),
-                ));
+            // 3. Name -- colored by change status
+            let (name_color, status_text) = if changes.added.contains(&node.path) {
+                (Color::Green, "NEW")
+            } else if changes.modified.contains(&node.path) {
+                (Color::Yellow, "MOD")
+            } else if changes.deleted.contains(&node.path) {
+                (Color::Red, "DEL")
+            } else {
+                (Color::White, "")
+            };
 
-                // 8. LOC (right-aligned, LOC_WIDTH)
-                let loc_str = format_loc(info.loc);
-                spans.push(Span::styled(
-                    format!("{:>width$}", loc_str, width = LOC_WIDTH as usize),
-                    Style::default().fg(Color::DarkGray),
-                ));
+            let name_style = if node.is_dir {
+                Style::default().fg(name_color).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(name_color)
+            };
 
-                // 9. LOC delta (right-aligned, LOC_WIDTH)
-                let prev_loc = previous_state.get(&node.path).map(|p| p.loc).unwrap_or(0);
-                let loc_delta = info.loc as i64 - prev_loc as i64;
-                let (loc_delta_str, loc_delta_color_name) = format_delta(loc_delta, false);
+            used_width += UnicodeWidthStr::width(node.name.as_str());
+            spans.push(Span::styled(node.name.clone(), name_style));
+
+            // 4. Pad the name portion to fill the Name column (1 + NAME_WIDTH),
+            //    then render the status badge in the Status column.
+            let name_col_end = 1 + NAME_WIDTH as usize;
+            let name_pad = if used_width < name_col_end {
+                name_col_end - used_width
+            } else {
+                1 // at least one space if the name is very long
+            };
+            spans.push(Span::raw(" ".repeat(name_pad)));
+
+            // 5. Status badge — rendered at the start of the Status column.
+            if !status_text.is_empty() {
+                let badge_color = match status_text {
+                    "NEW" => Color::Green,
+                    "MOD" => Color::Yellow,
+                    "DEL" => Color::Red,
+                    _ => Color::Reset,
+                };
+                let badge = format!("[{}]", status_text);
+                let badge_width = badge.len();
                 spans.push(Span::styled(
-                    format!("{:>width$}", loc_delta_str, width = LOC_WIDTH as usize),
-                    Style::default().fg(color_from_name(loc_delta_color_name)),
+                    badge,
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(badge_color)
+                        .add_modifier(Modifier::BOLD),
                 ));
+                // Pad the rest of the Status column after the badge.
+                let status_pad = (STATUS_WIDTH as usize).saturating_sub(badge_width);
+                spans.push(Span::raw(" ".repeat(status_pad)));
+            } else {
+                // No status — fill the entire Status column with spaces.
+                spans.push(Span::raw(" ".repeat(STATUS_WIDTH as usize)));
             }
+
+            // For files (not dirs), show size, delta, LOC, LOC delta as
+            // fixed-width right-aligned columns.
+            if !node.is_dir {
+                if let Some(info) = state.get(&node.path) {
+                    // 6. Size (right-aligned, SIZE_WIDTH)
+                    let size_str = format_size(info.size);
+                    let size_color = color_from_name(get_size_color(info.size));
+                    spans.push(Span::styled(
+                        format!("{:>width$}", size_str, width = SIZE_WIDTH as usize),
+                        Style::default().fg(size_color),
+                    ));
+
+                    // 7. Size delta (right-aligned, DELTA_WIDTH)
+                    let prev_size = previous_state.get(&node.path).map(|p| p.size).unwrap_or(0);
+                    let size_delta = info.size as i64 - prev_size as i64;
+                    let (delta_str, delta_color_name) = format_delta(size_delta, true);
+                    spans.push(Span::styled(
+                        format!("{:>width$}", delta_str, width = DELTA_WIDTH as usize),
+                        Style::default().fg(color_from_name(delta_color_name)),
+                    ));
+
+                    // 8. LOC (right-aligned, LOC_WIDTH)
+                    let loc_str = format_loc(info.loc);
+                    spans.push(Span::styled(
+                        format!("{:>width$}", loc_str, width = LOC_WIDTH as usize),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+
+                    // 9. LOC delta (right-aligned, LOC_WIDTH)
+                    let prev_loc = previous_state.get(&node.path).map(|p| p.loc).unwrap_or(0);
+                    let loc_delta = info.loc as i64 - prev_loc as i64;
+                    let (loc_delta_str, loc_delta_color_name) = format_delta(loc_delta, false);
+                    spans.push(Span::styled(
+                        format!("{:>width$}", loc_delta_str, width = LOC_WIDTH as usize),
+                        Style::default().fg(color_from_name(loc_delta_color_name)),
+                    ));
+                }
+            }
+
+            lines.push(Line::from(spans));
         }
 
-        lines.push(Line::from(spans));
+        *line_index += 1;
 
         // Recurse into children for directories.
         if node.is_dir && !node.children.is_empty() {
-            render_tree_lines(
-                &node.children,
-                &child_prefix,
-                state,
-                changes,
-                previous_state,
-                max_depth,
-                max_files,
-                current_depth + 1,
-                lines,
-            );
+            // If the entire subtree is before the viewport, skip it cheaply
+            // by advancing the line counter without recursing into rendering.
+            let subtree_size =
+                count_tree_lines(&node.children, max_depth, max_files, current_depth + 1);
+            if *line_index + subtree_size <= visible_start {
+                *line_index += subtree_size;
+            } else {
+                render_tree_lines(
+                    &node.children,
+                    &child_prefix,
+                    state,
+                    changes,
+                    previous_state,
+                    max_depth,
+                    max_files,
+                    current_depth + 1,
+                    visible_start,
+                    visible_end,
+                    line_index,
+                    lines,
+                );
+            }
         }
     }
+}
+
+/// Count the total number of lines the tree would produce without building
+/// any `Line` objects.  This mirrors the logic of `render_tree_lines` exactly
+/// (including `max_depth` and `max_files` truncation) so the scroll indicator
+/// stays accurate.
+pub fn count_tree_lines(
+    nodes: &[TreeNode],
+    max_depth: Option<usize>,
+    max_files: Option<usize>,
+    current_depth: usize,
+) -> usize {
+    if let Some(md) = max_depth {
+        if current_depth > md {
+            return 1; // the "..." placeholder
+        }
+    }
+
+    let total = nodes.len();
+    let display_count = match max_files {
+        Some(mf) => mf.min(total),
+        None => total,
+    };
+
+    let mut count: usize = 0;
+
+    for (i, node) in nodes.iter().enumerate() {
+        if i >= display_count {
+            count += 1; // "... and N more"
+            break;
+        }
+
+        count += 1; // the node itself
+
+        if node.is_dir && !node.children.is_empty() {
+            count += count_tree_lines(&node.children, max_depth, max_files, current_depth + 1);
+        }
+    }
+
+    count
 }
 
 // ---------------------------------------------------------------------------
@@ -875,12 +955,34 @@ pub fn render_ui(
     } else {
         filter_tree(&tree_nodes, search_query)
     };
-    let mut tree_lines: Vec<Line<'static>> = Vec::new();
 
-    // Column headers
-    tree_lines.push(tree_column_headers());
+    // Count total lines cheaply (no Line/Span allocations) for the scroll
+    // indicator.  +1 for the column header row.
+    let content_lines = count_tree_lines(&tree_nodes, max_depth, max_files, 0);
+    let total_tree_lines = (content_lines + 1) as u16; // +1 for column headers
 
-    // Actual tree content
+    // Virtual scrolling: only build Line objects for the visible viewport.
+    let viewport_height = tree_area.height as usize;
+    let scroll = scroll_offset as usize;
+
+    let mut tree_lines: Vec<Line<'static>> = Vec::with_capacity(viewport_height);
+
+    // The column header is always line 0.
+    if scroll == 0 {
+        tree_lines.push(tree_column_headers());
+    }
+
+    // Content lines start at global index 1 (after the header).
+    // Determine the visible window within content lines.
+    let content_visible_start = if scroll == 0 {
+        0
+    } else {
+        scroll.saturating_sub(1)
+    };
+    let remaining_viewport = viewport_height.saturating_sub(tree_lines.len());
+    let content_visible_end = content_visible_start + remaining_viewport;
+
+    let mut line_index: usize = 0;
     render_tree_lines(
         &tree_nodes,
         " ",
@@ -890,15 +992,15 @@ pub fn render_ui(
         max_depth,
         max_files,
         0,
+        content_visible_start,
+        content_visible_end,
+        &mut line_index,
         &mut tree_lines,
     );
 
-    let total_tree_lines = tree_lines.len() as u16;
     let tree_text = Text::from(tree_lines);
     let tree_block = Block::default().borders(Borders::NONE);
-    let tree_paragraph = Paragraph::new(tree_text)
-        .block(tree_block)
-        .scroll((scroll_offset, 0));
+    let tree_paragraph = Paragraph::new(tree_text).block(tree_block);
     frame.render_widget(tree_paragraph, tree_area);
 
     // ----- Stats dashboard -----
@@ -1014,6 +1116,7 @@ mod tests {
         let previous_state = HashMap::new();
         let nodes = build_tree(&root, &state);
         let mut lines: Vec<Line<'static>> = Vec::new();
+        let mut line_index = 0;
 
         render_tree_lines(
             &nodes,
@@ -1024,6 +1127,9 @@ mod tests {
             None,
             None,
             0,
+            0,
+            usize::MAX,
+            &mut line_index,
             &mut lines,
         );
 
@@ -1058,6 +1164,7 @@ mod tests {
         let previous_state = HashMap::new();
         let nodes = build_tree(&root, &state);
         let mut lines: Vec<Line<'static>> = Vec::new();
+        let mut line_index = 0;
 
         // max_depth = 0 means only the root-level children, no recursion into
         // subdirectories.
@@ -1070,6 +1177,9 @@ mod tests {
             Some(0),
             None,
             0,
+            0,
+            usize::MAX,
+            &mut line_index,
             &mut lines,
         );
 

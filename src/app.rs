@@ -443,14 +443,16 @@ impl App {
             );
 
             // Print a shareable command so users can send the recording.
-            match self.compress_recording(&output_path) {
-                Ok(encoded) => {
-                    println!();
-                    println!("Share this recording:");
-                    println!("  chronocode --load {}", encoded);
-                }
-                Err(e) => {
-                    eprintln!("Failed to generate share command: {}", e);
+            if event_count > 0 {
+                match self.compress_recording(&output_path) {
+                    Ok(encoded) => {
+                        println!();
+                        println!("Share this recording:");
+                        println!("  chronocode --load {}", encoded);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to generate share command: {}", e);
+                    }
                 }
             }
 
