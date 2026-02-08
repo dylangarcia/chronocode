@@ -34,6 +34,10 @@ pub struct App {
     pub running: bool,
     pub scroll_offset: u16,
     pub total_tree_lines: u16,
+    /// Whether the search input bar is actively accepting keystrokes.
+    pub search_active: bool,
+    /// The current search/filter query string.
+    pub search_query: String,
 }
 
 impl App {
@@ -99,6 +103,8 @@ impl App {
             running: true,
             scroll_offset: 0,
             total_tree_lines: 0,
+            search_active: false,
+            search_query: String::new(),
         })
     }
 
@@ -229,6 +235,8 @@ impl App {
             // --- Draw ---
             let scroll_offset = self.scroll_offset;
             let mut total_lines_out: u16 = 0;
+            let search_query = self.search_query.clone();
+            let search_active = self.search_active;
             terminal.draw(|frame| {
                 let stats = self.tracker.stats_tracker.as_ref().map(|st| st.get_stats());
                 total_lines_out = renderer::render_ui(
@@ -243,6 +251,8 @@ impl App {
                     self.max_files,
                     self.show_stats,
                     scroll_offset,
+                    &search_query,
+                    search_active,
                 );
             })?;
             self.total_tree_lines = total_lines_out;
@@ -250,59 +260,112 @@ impl App {
             // --- Handle keyboard events ---
             if event::poll(Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
-                    // Compute the viewport height for the tree area.
+                    // Ctrl+C always quits, regardless of search state.
+                    if key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        break;
+                    }
+
+                    // Compute scroll dimensions for scroll key handling.
                     let term_height = terminal.size()?.height;
                     let stats_height: u16 =
                         if self.show_stats && self.tracker.stats_tracker.is_some() {
-                            7
+                            9
                         } else {
                             0
                         };
-                    // header(3) + summary(1) + stats + legend(1) = overhead
                     let overhead = 3 + 1 + stats_height + 1;
                     let viewport_height = term_height.saturating_sub(overhead);
                     let max_scroll = self.total_tree_lines.saturating_sub(viewport_height);
                     let half_page = viewport_height / 2;
 
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Char('Q') => break,
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            break
+                    if self.search_active {
+                        // Search input mode: typing into the search bar.
+                        match key.code {
+                            KeyCode::Esc => {
+                                self.search_active = false;
+                                self.search_query.clear();
+                            }
+                            KeyCode::Enter => {
+                                self.search_active = false;
+                            }
+                            KeyCode::Backspace => {
+                                self.search_query.pop();
+                            }
+                            KeyCode::Char(c) => {
+                                self.search_query.push(c);
+                            }
+                            _ => {}
                         }
-                        // Scroll down by 1
-                        KeyCode::Char('j') | KeyCode::Down => {
-                            self.scroll_offset =
-                                self.scroll_offset.saturating_add(1).min(max_scroll);
+                    } else if !self.search_query.is_empty() {
+                        // Filter active but not in input mode — scroll + filter keys.
+                        match key.code {
+                            KeyCode::Esc => {
+                                self.search_query.clear();
+                            }
+                            KeyCode::Char('/') => {
+                                self.search_active = true;
+                            }
+                            KeyCode::Char('q') | KeyCode::Char('Q') => break,
+                            KeyCode::Char('j') | KeyCode::Down => {
+                                self.scroll_offset =
+                                    self.scroll_offset.saturating_add(1).min(max_scroll);
+                            }
+                            KeyCode::Char('k') | KeyCode::Up => {
+                                self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                            }
+                            KeyCode::PageDown => {
+                                self.scroll_offset =
+                                    self.scroll_offset.saturating_add(half_page).min(max_scroll);
+                            }
+                            KeyCode::PageUp => {
+                                self.scroll_offset = self.scroll_offset.saturating_sub(half_page);
+                            }
+                            KeyCode::Char('g') | KeyCode::Home => {
+                                self.scroll_offset = 0;
+                            }
+                            KeyCode::Char('G') | KeyCode::End => {
+                                self.scroll_offset = max_scroll;
+                            }
+                            _ => {}
                         }
-                        // Scroll up by 1
-                        KeyCode::Char('k') | KeyCode::Up => {
-                            self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                    } else {
+                        // Normal mode — scroll + quit + search activation.
+                        match key.code {
+                            KeyCode::Char('q') | KeyCode::Char('Q') => break,
+                            KeyCode::Char('/') => {
+                                self.search_active = true;
+                            }
+                            KeyCode::Char('j') | KeyCode::Down => {
+                                self.scroll_offset =
+                                    self.scroll_offset.saturating_add(1).min(max_scroll);
+                            }
+                            KeyCode::Char('k') | KeyCode::Up => {
+                                self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                            }
+                            KeyCode::PageDown => {
+                                self.scroll_offset =
+                                    self.scroll_offset.saturating_add(half_page).min(max_scroll);
+                            }
+                            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                self.scroll_offset =
+                                    self.scroll_offset.saturating_add(half_page).min(max_scroll);
+                            }
+                            KeyCode::PageUp => {
+                                self.scroll_offset = self.scroll_offset.saturating_sub(half_page);
+                            }
+                            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                self.scroll_offset = self.scroll_offset.saturating_sub(half_page);
+                            }
+                            KeyCode::Char('g') | KeyCode::Home => {
+                                self.scroll_offset = 0;
+                            }
+                            KeyCode::Char('G') | KeyCode::End => {
+                                self.scroll_offset = max_scroll;
+                            }
+                            _ => {}
                         }
-                        // Scroll down by half page
-                        KeyCode::PageDown => {
-                            self.scroll_offset =
-                                self.scroll_offset.saturating_add(half_page).min(max_scroll);
-                        }
-                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            self.scroll_offset =
-                                self.scroll_offset.saturating_add(half_page).min(max_scroll);
-                        }
-                        // Scroll up by half page
-                        KeyCode::PageUp => {
-                            self.scroll_offset = self.scroll_offset.saturating_sub(half_page);
-                        }
-                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            self.scroll_offset = self.scroll_offset.saturating_sub(half_page);
-                        }
-                        // Scroll to top
-                        KeyCode::Char('g') | KeyCode::Home => {
-                            self.scroll_offset = 0;
-                        }
-                        // Scroll to bottom
-                        KeyCode::Char('G') | KeyCode::End => {
-                            self.scroll_offset = max_scroll;
-                        }
-                        _ => {}
                     }
                 }
             }

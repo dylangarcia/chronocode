@@ -120,6 +120,55 @@ fn build_children(parent: &Path, state: &HashMap<PathBuf, FileInfo>) -> Vec<Tree
 }
 
 // ---------------------------------------------------------------------------
+// Tree filtering
+// ---------------------------------------------------------------------------
+
+/// Recursively filter tree nodes, keeping any node whose name matches the query
+/// (case-insensitive) OR that has a descendant that matches.  Parent directories
+/// of matching files are kept so the tree structure remains intact.
+pub fn filter_tree(nodes: &[TreeNode], query: &str) -> Vec<TreeNode> {
+    let query_lower = query.to_lowercase();
+    nodes
+        .iter()
+        .filter_map(|node| filter_node(node, &query_lower))
+        .collect()
+}
+
+/// Filter a single node: returns `Some(filtered_node)` if this node or any
+/// descendant matches; `None` otherwise.
+fn filter_node(node: &TreeNode, query_lower: &str) -> Option<TreeNode> {
+    let name_matches = node.name.to_lowercase().contains(query_lower);
+
+    if node.is_dir {
+        let filtered_children: Vec<TreeNode> = node
+            .children
+            .iter()
+            .filter_map(|child| filter_node(child, query_lower))
+            .collect();
+
+        if name_matches || !filtered_children.is_empty() {
+            Some(TreeNode {
+                name: node.name.clone(),
+                path: node.path.clone(),
+                is_dir: node.is_dir,
+                children: filtered_children,
+            })
+        } else {
+            None
+        }
+    } else if name_matches {
+        Some(TreeNode {
+            name: node.name.clone(),
+            path: node.path.clone(),
+            is_dir: node.is_dir,
+            children: Vec::new(),
+        })
+    } else {
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tree line rendering
 // ---------------------------------------------------------------------------
 
@@ -609,38 +658,83 @@ fn render_stats_dashboard(frame: &mut Frame, area: Rect, stats: &Stats) {
 // ---------------------------------------------------------------------------
 
 /// Render the legend / key-binding bar at the bottom of the screen.
+/// Shows the search input bar when search is active, filter indicator when
+/// a filter is applied, or the normal legend otherwise.  Includes a scroll
+/// position indicator when the tree overflows the viewport.
 fn render_legend(
     frame: &mut Frame,
     area: Rect,
+    search_query: &str,
+    search_active: bool,
     scroll_offset: u16,
     total_lines: u16,
     viewport_height: u16,
 ) {
-    let mut spans = vec![
-        Span::styled(" Legend: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            "NEW",
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("  "),
-        Span::styled(
-            "MODIFIED",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("  "),
-        Span::styled(
-            "DELETED",
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            "  |  q quit  j/k scroll  g/G top/bottom",
-            Style::default().fg(Color::DarkGray),
-        ),
-    ];
+    let mut spans: Vec<Span<'static>> = if search_active {
+        // Search input mode: show the search bar with cursor.
+        vec![
+            Span::styled(
+                " / ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(" {}", search_query),
+                Style::default().fg(Color::White),
+            ),
+            Span::styled(
+                "_",
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::SLOW_BLINK),
+            ),
+            Span::styled("  (Esc to cancel)", Style::default().fg(Color::DarkGray)),
+        ]
+    } else if !search_query.is_empty() {
+        // Filter is active but not in input mode.
+        vec![
+            Span::styled(" Filter: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("\"{}\"", search_query),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "  (Esc to clear, / to edit)  |  j/k scroll",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]
+    } else {
+        // Normal legend.
+        vec![
+            Span::styled(" Legend: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "NEW",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("  "),
+            Span::styled(
+                "MODIFIED",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("  "),
+            Span::styled(
+                "DELETED",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "  |  q quit  / search  j/k scroll  g/G top/bottom",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]
+    };
 
     // Show scroll position indicator when content overflows the viewport.
     if total_lines > viewport_height {
@@ -714,6 +808,8 @@ pub fn render_ui(
     max_files: Option<usize>,
     show_stats: bool,
     scroll_offset: u16,
+    search_query: &str,
+    search_active: bool,
 ) -> u16 {
     let size = frame.area();
 
@@ -747,6 +843,11 @@ pub fn render_ui(
 
     // ----- Tree -----
     let tree_nodes = build_tree(root_path, state);
+    let tree_nodes = if search_query.is_empty() {
+        tree_nodes
+    } else {
+        filter_tree(&tree_nodes, search_query)
+    };
     let mut tree_lines: Vec<Line<'static>> = Vec::new();
 
     // Column headers
@@ -784,6 +885,8 @@ pub fn render_ui(
     render_legend(
         frame,
         legend_area,
+        search_query,
+        search_active,
         scroll_offset,
         total_tree_lines,
         tree_area.height,
