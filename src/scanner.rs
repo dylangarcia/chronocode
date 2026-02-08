@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::UNIX_EPOCH;
 
 use walkdir::WalkDir;
@@ -11,6 +12,14 @@ use crate::statistics::StatisticsTracker;
 
 /// Cached LOC entry: `(mtime, size, loc)`.
 type LocCacheEntry = (f64, u64, usize);
+
+/// Result of a background scan, returned via channel.
+pub struct ScanResult {
+    pub state: HashMap<PathBuf, FileInfo>,
+    /// The gitignore parser, returned so it can be put back into the tracker
+    /// (it may have been updated with newly-discovered nested .gitignore files).
+    pub gitignore_parser: Option<GitignoreParser>,
+}
 
 /// Tracks directory state across scans and detects file-level changes.
 pub struct ChangeTracker {
@@ -81,317 +90,76 @@ impl ChangeTracker {
         self.worktree_paths = paths;
     }
 
-    /// Returns `true` if `path` falls under any registered worktree directory.
-    fn is_inside_worktree(&self, path: &Path) -> bool {
-        // Check the path itself and each ancestor against the set.
-        let mut current = Some(path);
-        while let Some(p) = current {
-            if self.worktree_path_set.contains(p) {
-                return true;
-            }
-            current = p.parent();
-        }
-        false
-    }
-
-    // ------------------------------------------------------------------
-    // Path filtering helpers
-    // ------------------------------------------------------------------
-
-    /// Returns `true` if any component of `path` (relative to the root)
-    /// starts with a dot, indicating a hidden file or directory.
-    fn is_hidden_path(&self, path: &Path) -> bool {
-        let rel = match path.strip_prefix(&self.root_path) {
-            Ok(r) => r,
-            Err(_) => return false,
-        };
-
-        for component in rel.components() {
-            if let Some(s) = component.as_os_str().to_str() {
-                if s.starts_with('.') {
-                    return true;
-                }
-            }
-        }
-
-        false
-    }
-
-    /// Returns `true` if the first component of `path` relative to the root
-    /// is `"recordings"`.
-    fn is_recordings_path(&self, path: &Path) -> bool {
-        let rel = match path.strip_prefix(&self.root_path) {
-            Ok(r) => r,
-            Err(_) => return false,
-        };
-
-        if let Some(first) = rel.components().next() {
-            if let Some(s) = first.as_os_str().to_str() {
-                return s == "recordings";
-            }
-        }
-
-        false
-    }
-
     // ------------------------------------------------------------------
     // Directory scanning
     // ------------------------------------------------------------------
 
-    /// Perform a full directory scan rooted at `root_path` and return a map
-    /// of every discovered path to its [`FileInfo`].
-    pub fn scan_directory(&mut self, root_path: &Path) -> HashMap<PathBuf, FileInfo> {
-        let mut state: HashMap<PathBuf, FileInfo> = HashMap::new();
+    /// Spawn the initial scan on a background thread.  Returns a receiver
+    /// that will deliver the `ScanResult` once the scan completes.
+    ///
+    /// The gitignore parser is temporarily moved out of `self` and into the
+    /// thread; it is returned inside `ScanResult` so the caller can put it
+    /// back.
+    pub fn spawn_background_scan(&mut self) -> mpsc::Receiver<ScanResult> {
+        let (tx, rx) = mpsc::channel();
 
-        // Add the root directory itself.
-        if let Ok(meta) = root_path.metadata() {
-            let mtime = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_secs_f64())
-                .unwrap_or(0.0);
+        let root_path = self.root_path.clone();
+        let show_hidden = self.show_hidden;
+        let use_gitignore = self.use_gitignore;
+        let worktree_paths = self.worktree_paths.clone();
+        let worktree_path_set = self.worktree_path_set.clone();
+        let initial_scan_done = self.initial_scan_done;
+        let gitignore_parser = self.gitignore_parser.take();
 
-            state.insert(
-                root_path.to_path_buf(),
-                FileInfo {
-                    size: 0,
-                    modified: mtime,
-                    is_dir: true,
-                    loc: 0,
-                },
+        std::thread::spawn(move || {
+            // The background scan uses its own empty LOC cache.  On the
+            // initial scan LOC counting is deferred anyway (all zeros), so
+            // the cache isn't needed.
+            let mut loc_cache = HashMap::new();
+            let (state, gitignore_parser) = scan_directory_impl(
+                &root_path,
+                show_hidden,
+                use_gitignore,
+                &worktree_paths,
+                &worktree_path_set,
+                initial_scan_done,
+                &mut loc_cache,
+                gitignore_parser,
             );
+            let _ = tx.send(ScanResult {
+                state,
+                gitignore_parser,
+            });
+        });
+
+        rx
+    }
+
+    /// Apply the result of a background scan to the tracker state.
+    pub fn apply_scan_result(&mut self, result: ScanResult) {
+        self.gitignore_parser = result.gitignore_parser;
+        self.previous_state = std::mem::take(&mut self.current_state);
+        self.current_state = result.state;
+        if !self.initial_scan_done {
+            self.initial_scan_done = true;
         }
+    }
 
-        let mut walker = WalkDir::new(root_path).follow_links(false).into_iter();
-
-        while let Some(entry_result) = walker.next() {
-            let entry = match entry_result {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-            let path = entry.path().to_path_buf();
-
-            // Skip the root itself (already added above).
-            if path == root_path {
-                continue;
-            }
-
-            // Skip symlinks.
-            if entry.path_is_symlink() {
-                continue;
-            }
-
-            let entry_is_dir = entry.file_type().is_dir();
-
-            // Skip hidden paths unless configured to show them.
-            // For directories, skip the entire subtree.
-            if !self.show_hidden && self.is_hidden_path(&path) {
-                if entry_is_dir {
-                    walker.skip_current_dir();
-                }
-                continue;
-            }
-
-            // Skip the recordings directory and its entire subtree.
-            if self.is_recordings_path(&path) {
-                if entry_is_dir {
-                    walker.skip_current_dir();
-                }
-                continue;
-            }
-
-            // Incrementally load nested .gitignore files as we discover them
-            // during the walk, so their rules apply to deeper entries.
-            if self.use_gitignore
-                && entry.file_type().is_file()
-                && entry.file_name() == ".gitignore"
-            {
-                if let Some(ref mut parser) = self.gitignore_parser {
-                    parser.load_gitignore_at(&path);
-                }
-            }
-
-            // Skip gitignored paths — but never skip worktree directories or
-            // anything inside them.  For ignored directories, skip the entire
-            // subtree to avoid descending into e.g. node_modules/.
-            if self.use_gitignore && !self.is_inside_worktree(&path) {
-                if let Some(ref parser) = self.gitignore_parser {
-                    if parser.is_ignored(&path, entry_is_dir) {
-                        if entry_is_dir {
-                            walker.skip_current_dir();
-                        }
-                        continue;
-                    }
-                }
-            }
-
-            let meta = match entry.metadata() {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-
-            let mtime = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_secs_f64())
-                .unwrap_or(0.0);
-
-            if meta.is_file() {
-                let size = meta.len();
-
-                // On the initial scan, defer LOC counting to avoid reading
-                // every file.  On subsequent scans, use the cache and only
-                // recount when mtime/size changes.
-                let loc = if !self.initial_scan_done {
-                    0
-                } else if let Some(&(cached_mtime, cached_size, cached_loc)) =
-                    self.loc_cache.get(&path)
-                {
-                    if cached_mtime == mtime && cached_size == size {
-                        cached_loc
-                    } else {
-                        let new_loc = get_loc(&path);
-                        self.loc_cache.insert(path.clone(), (mtime, size, new_loc));
-                        new_loc
-                    }
-                } else {
-                    let new_loc = get_loc(&path);
-                    self.loc_cache.insert(path.clone(), (mtime, size, new_loc));
-                    new_loc
-                };
-
-                state.insert(
-                    path,
-                    FileInfo {
-                        size,
-                        modified: mtime,
-                        is_dir: false,
-                        loc,
-                    },
-                );
-            } else if meta.is_dir() {
-                state.insert(
-                    path,
-                    FileInfo {
-                        size: 0,
-                        modified: mtime,
-                        is_dir: true,
-                        loc: 0,
-                    },
-                );
-            }
-        }
-
-        // Scan external worktrees (those not under root_path) and merge
-        // their entries into the state.  Their paths are stored as absolute
-        // paths so the renderer can display them.
-        for wt_path in &self.worktree_paths {
-            if wt_path.starts_with(root_path) {
-                // Already covered by the main walk above.
-                continue;
-            }
-
-            let wt_walker = WalkDir::new(wt_path)
-                .follow_links(false)
-                .into_iter()
-                .filter_map(|e| e.ok());
-
-            // Add the worktree root directory itself.
-            if let Ok(meta) = wt_path.metadata() {
-                let mtime = meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs_f64())
-                    .unwrap_or(0.0);
-                state.insert(
-                    wt_path.clone(),
-                    FileInfo {
-                        size: 0,
-                        modified: mtime,
-                        is_dir: true,
-                        loc: 0,
-                    },
-                );
-            }
-
-            for entry in wt_walker {
-                let path = entry.path().to_path_buf();
-                if path == *wt_path {
-                    continue;
-                }
-                if entry.path_is_symlink() {
-                    continue;
-                }
-                // Skip hidden paths inside worktrees too (unless --all).
-                if !self.show_hidden {
-                    let rel = path.strip_prefix(wt_path).unwrap_or(&path);
-                    let hidden = rel
-                        .components()
-                        .any(|c| c.as_os_str().to_str().is_some_and(|s| s.starts_with('.')));
-                    if hidden {
-                        continue;
-                    }
-                }
-
-                let meta = match entry.metadata() {
-                    Ok(m) => m,
-                    Err(_) => continue,
-                };
-
-                let mtime = meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs_f64())
-                    .unwrap_or(0.0);
-
-                if meta.is_file() {
-                    let size = meta.len();
-                    let loc = if !self.initial_scan_done {
-                        0
-                    } else if let Some(&(cached_mtime, cached_size, cached_loc)) =
-                        self.loc_cache.get(&path)
-                    {
-                        if cached_mtime == mtime && cached_size == size {
-                            cached_loc
-                        } else {
-                            let new_loc = get_loc(&path);
-                            self.loc_cache.insert(path.clone(), (mtime, size, new_loc));
-                            new_loc
-                        }
-                    } else {
-                        let new_loc = get_loc(&path);
-                        self.loc_cache.insert(path.clone(), (mtime, size, new_loc));
-                        new_loc
-                    };
-
-                    state.insert(
-                        path,
-                        FileInfo {
-                            size,
-                            modified: mtime,
-                            is_dir: false,
-                            loc,
-                        },
-                    );
-                } else if meta.is_dir() {
-                    state.insert(
-                        path,
-                        FileInfo {
-                            size: 0,
-                            modified: mtime,
-                            is_dir: true,
-                            loc: 0,
-                        },
-                    );
-                }
-            }
-        }
-
+    /// Perform a full directory scan synchronously.  Used for subsequent
+    /// scans after the initial background scan has completed.
+    pub fn scan_directory(&mut self, root_path: &Path) -> HashMap<PathBuf, FileInfo> {
+        let gitignore_parser = self.gitignore_parser.take();
+        let (state, parser_out) = scan_directory_impl(
+            root_path,
+            self.show_hidden,
+            self.use_gitignore,
+            &self.worktree_paths,
+            &self.worktree_path_set,
+            self.initial_scan_done,
+            &mut self.loc_cache,
+            gitignore_parser,
+        );
+        self.gitignore_parser = parser_out;
         state
     }
 
@@ -485,4 +253,298 @@ impl ChangeTracker {
             self.initial_scan_done = true;
         }
     }
+}
+
+// ======================================================================
+// Standalone scan implementation (usable from both main and bg threads)
+// ======================================================================
+
+/// Returns `true` if any component of `path` (relative to `root`) starts with
+/// a dot.
+fn path_is_hidden(path: &Path, root: &Path) -> bool {
+    let rel = match path.strip_prefix(root) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    for component in rel.components() {
+        if let Some(s) = component.as_os_str().to_str() {
+            if s.starts_with('.') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Returns `true` if the first component of `path` relative to `root` is
+/// `"recordings"`.
+fn path_is_recordings(path: &Path, root: &Path) -> bool {
+    let rel = match path.strip_prefix(root) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    if let Some(first) = rel.components().next() {
+        if let Some(s) = first.as_os_str().to_str() {
+            return s == "recordings";
+        }
+    }
+    false
+}
+
+/// Returns `true` if `path` falls under any path in the worktree set.
+fn path_in_worktree(path: &Path, worktree_set: &HashSet<PathBuf>) -> bool {
+    let mut current = Some(path);
+    while let Some(p) = current {
+        if worktree_set.contains(p) {
+            return true;
+        }
+        current = p.parent();
+    }
+    false
+}
+
+/// Core scan logic shared by both synchronous and background scan paths.
+///
+/// Returns `(state, gitignore_parser)`.
+#[allow(clippy::too_many_arguments)]
+fn scan_directory_impl(
+    root_path: &Path,
+    show_hidden: bool,
+    use_gitignore: bool,
+    worktree_paths: &[PathBuf],
+    worktree_path_set: &HashSet<PathBuf>,
+    initial_scan_done: bool,
+    loc_cache: &mut HashMap<PathBuf, LocCacheEntry>,
+    mut gitignore_parser: Option<GitignoreParser>,
+) -> (HashMap<PathBuf, FileInfo>, Option<GitignoreParser>) {
+    let mut state: HashMap<PathBuf, FileInfo> = HashMap::new();
+
+    // Add the root directory itself.
+    if let Ok(meta) = root_path.metadata() {
+        let mtime = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+
+        state.insert(
+            root_path.to_path_buf(),
+            FileInfo {
+                size: 0,
+                modified: mtime,
+                is_dir: true,
+                loc: 0,
+            },
+        );
+    }
+
+    let mut walker = WalkDir::new(root_path).follow_links(false).into_iter();
+
+    while let Some(entry_result) = walker.next() {
+        let entry = match entry_result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let path = entry.path().to_path_buf();
+
+        if path == root_path {
+            continue;
+        }
+
+        if entry.path_is_symlink() {
+            continue;
+        }
+
+        let entry_is_dir = entry.file_type().is_dir();
+
+        if !show_hidden && path_is_hidden(&path, root_path) {
+            if entry_is_dir {
+                walker.skip_current_dir();
+            }
+            continue;
+        }
+
+        if path_is_recordings(&path, root_path) {
+            if entry_is_dir {
+                walker.skip_current_dir();
+            }
+            continue;
+        }
+
+        // Incrementally load nested .gitignore files.
+        if use_gitignore && entry.file_type().is_file() && entry.file_name() == ".gitignore" {
+            if let Some(ref mut parser) = gitignore_parser {
+                parser.load_gitignore_at(&path);
+            }
+        }
+
+        // Skip gitignored paths; for ignored dirs skip the entire subtree.
+        if use_gitignore && !path_in_worktree(&path, worktree_path_set) {
+            if let Some(ref parser) = gitignore_parser {
+                if parser.is_ignored(&path, entry_is_dir) {
+                    if entry_is_dir {
+                        walker.skip_current_dir();
+                    }
+                    continue;
+                }
+            }
+        }
+
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        let mtime = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+
+        if meta.is_file() {
+            let size = meta.len();
+
+            let loc = if !initial_scan_done {
+                0
+            } else if let Some(&(cached_mtime, cached_size, cached_loc)) = loc_cache.get(&path) {
+                if cached_mtime == mtime && cached_size == size {
+                    cached_loc
+                } else {
+                    let new_loc = get_loc(&path);
+                    loc_cache.insert(path.clone(), (mtime, size, new_loc));
+                    new_loc
+                }
+            } else {
+                let new_loc = get_loc(&path);
+                loc_cache.insert(path.clone(), (mtime, size, new_loc));
+                new_loc
+            };
+
+            state.insert(
+                path,
+                FileInfo {
+                    size,
+                    modified: mtime,
+                    is_dir: false,
+                    loc,
+                },
+            );
+        } else if meta.is_dir() {
+            state.insert(
+                path,
+                FileInfo {
+                    size: 0,
+                    modified: mtime,
+                    is_dir: true,
+                    loc: 0,
+                },
+            );
+        }
+    }
+
+    // Scan external worktrees.
+    for wt_path in worktree_paths {
+        if wt_path.starts_with(root_path) {
+            continue;
+        }
+
+        let wt_walker = WalkDir::new(wt_path)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok());
+
+        if let Ok(meta) = wt_path.metadata() {
+            let mtime = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0);
+            state.insert(
+                wt_path.clone(),
+                FileInfo {
+                    size: 0,
+                    modified: mtime,
+                    is_dir: true,
+                    loc: 0,
+                },
+            );
+        }
+
+        for entry in wt_walker {
+            let path = entry.path().to_path_buf();
+            if path == *wt_path {
+                continue;
+            }
+            if entry.path_is_symlink() {
+                continue;
+            }
+            if !show_hidden {
+                let rel = path.strip_prefix(wt_path).unwrap_or(&path);
+                let hidden = rel
+                    .components()
+                    .any(|c| c.as_os_str().to_str().is_some_and(|s| s.starts_with('.')));
+                if hidden {
+                    continue;
+                }
+            }
+
+            let meta = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            let mtime = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0);
+
+            if meta.is_file() {
+                let size = meta.len();
+                let loc = if !initial_scan_done {
+                    0
+                } else if let Some(&(cached_mtime, cached_size, cached_loc)) = loc_cache.get(&path)
+                {
+                    if cached_mtime == mtime && cached_size == size {
+                        cached_loc
+                    } else {
+                        let new_loc = get_loc(&path);
+                        loc_cache.insert(path.clone(), (mtime, size, new_loc));
+                        new_loc
+                    }
+                } else {
+                    let new_loc = get_loc(&path);
+                    loc_cache.insert(path.clone(), (mtime, size, new_loc));
+                    new_loc
+                };
+
+                state.insert(
+                    path,
+                    FileInfo {
+                        size,
+                        modified: mtime,
+                        is_dir: false,
+                        loc,
+                    },
+                );
+            } else if meta.is_dir() {
+                state.insert(
+                    path,
+                    FileInfo {
+                        size: 0,
+                        modified: mtime,
+                        is_dir: true,
+                        loc: 0,
+                    },
+                );
+            }
+        }
+    }
+
+    (state, gitignore_parser)
 }

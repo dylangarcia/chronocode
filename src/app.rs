@@ -177,50 +177,74 @@ impl App {
 
     /// Run the main TUI event loop.
     pub fn run(&mut self) -> Result<()> {
-        // 1. Initial scan — do NOT log these as events.
-        //    Temporarily take the event_logger out so the first `update` call
-        //    doesn't record the entire initial tree as "created" events.
-        let logger_backup = self.tracker.event_logger.take();
-        self.tracker.update(&self.root_path);
-
-        // If we had a logger, capture the initial state and start recording,
-        // then put it back.
-        if let Some(mut logger) = logger_backup {
-            logger.set_initial_state(&self.tracker.current_state);
-            logger.start_recording();
-            self.tracker.event_logger = Some(logger);
-        }
-
-        // 2. Set up the file watcher (root + any external worktrees).
-        let mut watch_paths: Vec<&std::path::Path> = vec![&self.root_path];
-        for wt in &self.worktree_paths {
-            if !wt.starts_with(&self.root_path) {
-                watch_paths.push(wt.as_path());
-            }
-        }
-        let (_watcher, watch_rx) = FileWatcher::new_multi(&watch_paths, self.refresh_interval)?;
-
-        // 3. Set up the terminal.
+        // 1. Set up the terminal immediately so the TUI appears without delay.
         enable_raw_mode()?;
         let mut out = stdout();
         execute!(out, EnterAlternateScreen)?;
         let backend = CrosstermBackend::new(out);
         let mut terminal = Terminal::new(backend)?;
 
-        // 4. Main loop.
+        // 2. Spawn the initial scan on a background thread.
+        //    Take the event logger out so the scan doesn't record the
+        //    initial tree as "created" events.
+        let mut logger_backup = self.tracker.event_logger.take();
+        let scan_rx = self.tracker.spawn_background_scan();
+        let mut scanning = true;
+
+        // The file watcher is set up lazily after the initial scan completes
+        // to avoid receiving change events for a state we haven't loaded yet.
+        let mut _watcher_holder: Option<FileWatcher> = None;
+        let mut watch_rx: Option<std::sync::mpsc::Receiver<WatchEvent>> = None;
+
+        // 3. Main loop.
         let mut last_update = Instant::now();
         let mut pending_change = false;
 
         loop {
-            // --- Check for filesystem changes (non-blocking) ---
-            // Drain all pending watcher events.
-            loop {
-                match watch_rx.try_recv() {
-                    Ok(WatchEvent::FileChanged) => pending_change = true,
-                    Ok(WatchEvent::Error(msg)) => {
-                        self.last_error = Some(msg);
+            // --- Check if the background scan has completed ---
+            if scanning {
+                if let Ok(result) = scan_rx.try_recv() {
+                    self.tracker.apply_scan_result(result);
+                    scanning = false;
+
+                    // Now that we have the initial state, set up recording.
+                    if let Some(mut logger) = logger_backup.take() {
+                        logger.set_initial_state(&self.tracker.current_state);
+                        logger.start_recording();
+                        self.tracker.event_logger = Some(logger);
                     }
-                    Err(_) => break,
+
+                    // Set up the file watcher now that we have baseline state.
+                    let mut wp: Vec<&std::path::Path> = vec![&self.root_path];
+                    for wt in &self.worktree_paths {
+                        if !wt.starts_with(&self.root_path) {
+                            wp.push(wt.as_path());
+                        }
+                    }
+                    match FileWatcher::new_multi(&wp, self.refresh_interval) {
+                        Ok((watcher, rx)) => {
+                            _watcher_holder = Some(watcher);
+                            watch_rx = Some(rx);
+                        }
+                        Err(e) => {
+                            self.last_error = Some(format!("Watcher error: {}", e));
+                        }
+                    }
+
+                    last_update = Instant::now();
+                }
+            }
+
+            // --- Check for filesystem changes (non-blocking) ---
+            if let Some(ref rx) = watch_rx {
+                loop {
+                    match rx.try_recv() {
+                        Ok(WatchEvent::FileChanged) => pending_change = true,
+                        Ok(WatchEvent::Error(msg)) => {
+                            self.last_error = Some(msg);
+                        }
+                        Err(_) => break,
+                    }
                 }
             }
 
@@ -237,7 +261,11 @@ impl App {
             let mut total_lines_out: u16 = 0;
             let search_query = self.search_query.clone();
             let search_active = self.search_active;
-            let last_error = self.last_error.clone();
+            let last_error = if scanning {
+                Some("Scanning...".to_string())
+            } else {
+                self.last_error.clone()
+            };
             terminal.draw(|frame| {
                 let stats = self.tracker.stats_tracker.as_ref().map(|st| st.get_stats());
                 total_lines_out = renderer::render_ui(
@@ -261,7 +289,7 @@ impl App {
 
             // --- Handle keyboard events ---
             // Use a short poll timeout so we cycle back quickly to check
-            // for filesystem changes.
+            // for filesystem changes and scan completion.
             if event::poll(Duration::from_millis(50))? {
                 if let Event::Key(key) = event::read()? {
                     // Ctrl+C always quits, regardless of search state.
