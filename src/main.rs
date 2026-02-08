@@ -1,5 +1,6 @@
 mod app;
 mod cli;
+mod git;
 mod gitignore;
 mod recording;
 mod renderer;
@@ -29,6 +30,12 @@ fn main() -> anyhow::Result<()> {
     // Handle --viewer mode
     if cli.viewer {
         handle_viewer()?;
+        return Ok(());
+    }
+
+    // Handle --git mode
+    if let Some(ref git_spec) = cli.git {
+        handle_git(git_spec, &cli)?;
         return Ok(());
     }
 
@@ -107,6 +114,80 @@ fn handle_share(recording_file: &str) -> anyhow::Result<()> {
 fn handle_load(data: &str) -> anyhow::Result<()> {
     let fragment = format!("data={}", data);
     server::serve_and_open(Some(&fragment))
+}
+
+fn handle_git(spec: &str, cli: &cli::Cli) -> anyhow::Result<()> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+
+    let repo_path = cli.path.canonicalize().unwrap_or_else(|_| cli.path.clone());
+    let recording = git::generate_recording(spec, &repo_path)?;
+
+    let stats = {
+        let created = recording
+            .events
+            .iter()
+            .filter(|e| e.event_type == state::EventType::Created)
+            .count();
+        let modified = recording
+            .events
+            .iter()
+            .filter(|e| e.event_type == state::EventType::Modified)
+            .count();
+        let deleted = recording
+            .events
+            .iter()
+            .filter(|e| e.event_type == state::EventType::Deleted)
+            .count();
+        (recording.events.len(), created, modified, deleted)
+    };
+
+    eprintln!(
+        "  {} commits, {} events ({} created, {} modified, {} deleted)",
+        recording.commit_count, stats.0, stats.1, stats.2, stats.3
+    );
+
+    // Build the recording JSON.
+    let data = serde_json::json!({
+        "start_time": recording.start_time,
+        "initial_state": recording.initial_state,
+        "events": recording.events.iter().map(|e| e.to_json()).collect::<Vec<serde_json::Value>>(),
+    });
+
+    // Save to file.
+    let recordings_dir = repo_path.join("recordings");
+    std::fs::create_dir_all(&recordings_dir)?;
+    let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let output_path = recordings_dir.join(format!("git_recording_{}.json", ts));
+    let json_str = serde_json::to_string(&data)?;
+    std::fs::write(&output_path, &json_str)?;
+
+    eprintln!(
+        "Recording saved: {} ({} events)",
+        output_path.display(),
+        stats.0
+    );
+
+    // Compress and print share command.
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+    encoder.write_all(json_str.as_bytes())?;
+    let compressed = encoder.finish()?;
+    let encoded = URL_SAFE_NO_PAD.encode(&compressed);
+
+    eprintln!();
+    eprintln!("Share this recording:");
+    eprintln!("  chronocode --load {}", encoded);
+
+    // Open the viewer.
+    if !cli.no_open {
+        let fragment = format!("data={}", encoded);
+        server::serve_and_open(Some(&fragment))?;
+    }
+
+    Ok(())
 }
 
 fn handle_replay(cli: &cli::Cli, replay_file: &str) -> anyhow::Result<()> {

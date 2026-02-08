@@ -70,4 +70,9 @@ pub struct Cli {
     /// Load a shared recording and open the viewer
     #[arg(long = "load")]
     pub load: Option<String>,
+
+    /// Generate a recording from git commits. Accepts a commit hash, a range
+    /// (e.g. abc123..def456), or a range to HEAD (e.g. abc123..)
+    #[arg(long)]
+    pub git: Option<String>,
 }

@@ -116,6 +116,23 @@ chronocode --load eJy0zTEOgCAQBdDe...
 
 The `--load` command contains the entire recording (compressed), so the recipient only needs the `chronocode` binary.
 
+### Generate from git history
+
+Create a recording from git commits without running a live session:
+
+```bash
+# From a single commit (diff from its parent)
+chronocode --git abc123
+
+# From a range of commits
+chronocode --git abc123..def456
+
+# From a commit to HEAD
+chronocode --git abc123..
+```
+
+The recording is saved to `recordings/` and the viewer opens automatically.
+
 ## Options
 
 ```
@@ -140,6 +157,7 @@ Options:
       --viewer                    Open the web replay viewer
       --share <FILE>              Generate a shareable command from a recording
       --load <DATA>               Load a shared recording and open the viewer
+      --git <SPEC>                Generate a recording from git commits
   -V, --version                   Print version
   -h, --help                      Print help
 ```
