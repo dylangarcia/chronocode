@@ -42,7 +42,7 @@ impl App {
 
             let output_path = if let Some(ref name) = cli.record {
                 let p = PathBuf::from(name);
-                if p.parent().map_or(true, |par| par.as_os_str().is_empty()) {
+                if p.parent().is_none_or(|par| par.as_os_str().is_empty()) {
                     recordings_dir.join(p)
                 } else {
                     p

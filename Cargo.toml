@@ -1,8 +1,8 @@
 [package]
 name = "chronocode"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-rust-version = "1.74"
+rust-version = "1.88"
 description = "Watch directory structure and file changes in real-time with a beautiful TUI"
 license = "MIT"
 repository = "https://github.com/dylangarcia/chronocode"
