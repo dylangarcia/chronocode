@@ -494,8 +494,14 @@ fn render_stats_dashboard(frame: &mut Frame, area: Rect, stats: &Stats) {
 // ---------------------------------------------------------------------------
 
 /// Render the legend / key-binding bar at the bottom of the screen.
-fn render_legend(frame: &mut Frame, area: Rect) {
-    let line = Line::from(vec![
+fn render_legend(
+    frame: &mut Frame,
+    area: Rect,
+    scroll_offset: u16,
+    total_lines: u16,
+    viewport_height: u16,
+) {
+    let mut spans = vec![
         Span::styled(" Legend: ", Style::default().fg(Color::DarkGray)),
         Span::styled(
             "NEW",
@@ -515,9 +521,23 @@ fn render_legend(frame: &mut Frame, area: Rect) {
             "DELETED",
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         ),
-        Span::styled("  |  q to quit", Style::default().fg(Color::DarkGray)),
-    ]);
+        Span::styled(
+            "  |  q quit  j/k scroll  g/G top/bottom",
+            Style::default().fg(Color::DarkGray),
+        ),
+    ];
 
+    // Show scroll position indicator when content overflows the viewport.
+    if total_lines > viewport_height {
+        let current_top = scroll_offset + 1;
+        let current_bottom = (scroll_offset + viewport_height).min(total_lines);
+        spans.push(Span::styled(
+            format!("  [{}-{}/{}]", current_top, current_bottom, total_lines),
+            Style::default().fg(Color::Cyan),
+        ));
+    }
+
+    let line = Line::from(spans);
     let paragraph = Paragraph::new(line);
     frame.render_widget(paragraph, area);
 }
@@ -578,7 +598,8 @@ pub fn render_ui(
     max_depth: Option<usize>,
     max_files: Option<usize>,
     show_stats: bool,
-) {
+    scroll_offset: u16,
+) -> u16 {
     let size = frame.area();
 
     // ----- Determine layout constraints -----
@@ -629,9 +650,12 @@ pub fn render_ui(
         &mut tree_lines,
     );
 
+    let total_tree_lines = tree_lines.len() as u16;
     let tree_text = Text::from(tree_lines);
     let tree_block = Block::default().borders(Borders::NONE);
-    let tree_paragraph = Paragraph::new(tree_text).block(tree_block).scroll((0, 0)); // TODO: wire up scroll offset from app state
+    let tree_paragraph = Paragraph::new(tree_text)
+        .block(tree_block)
+        .scroll((scroll_offset, 0));
     frame.render_widget(tree_paragraph, tree_area);
 
     // ----- Stats dashboard -----
@@ -642,7 +666,15 @@ pub fn render_ui(
     }
 
     // ----- Legend -----
-    render_legend(frame, legend_area);
+    render_legend(
+        frame,
+        legend_area,
+        scroll_offset,
+        total_tree_lines,
+        tree_area.height,
+    );
+
+    total_tree_lines
 }
 
 // ---------------------------------------------------------------------------
