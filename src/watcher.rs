@@ -5,6 +5,7 @@ use std::time::Duration;
 
 pub enum WatchEvent {
     FileChanged,
+    #[allow(dead_code)] // Will be handled in Task 3
     Error(String),
 }
 

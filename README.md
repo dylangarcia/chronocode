@@ -25,7 +25,7 @@ chronocode -a -i 0.5
 
 Press `q` to quit. Every session is automatically recorded.
 
-When you exit, you get a clickable link to replay the session in your browser:
+When you exit, you get a shareable command and the viewer opens in your browser:
 
 ```
 Session summary:
@@ -34,19 +34,35 @@ Session summary:
 
 Recording saved: recordings/recording_20260207_191500.json (33 events)
 
-  Open recording: file:///path/to/replay.html#data=...
+Share this recording:
+  chronocode --load eJy0zTEOgCAQBdDe...
 ```
 
 ## Features
 
 - **Real-time file tree** with emoji icons, sizes, and line counts
 - **Change detection** - created, modified, and deleted files highlighted with deltas
-- **Statistics dashboard** - session duration, event rate, file/dir counts
+- **Statistics dashboard** - session duration, event rate, file/dir counts, activity sparkline, extension breakdown
 - **Automatic recording** - every session is saved as JSON for replay
-- **Web replay viewer** - timeline scrubbing, content preview, diff view, code structure analysis
-- **Shareable URLs** - compress a recording into a URL and send it to anyone
+- **Web replay viewer** - timeline scrubbing, content preview, diff view, LOC counts
+- **Shareable recordings** - compress a recording and send it as a single command
 - **Gitignore support** - respects `.gitignore` by default
+- **Search/filter** - press `/` to search files by name
+- **Scrolling** - `j/k`, `g/G`, `PageUp/Down`, `Ctrl+d/u` with position indicator
 - **Collapsible folders** in the web viewer
+
+## Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `q` | Quit |
+| `/` | Search/filter files |
+| `Esc` | Clear search |
+| `j` / `k` | Scroll down / up |
+| `g` / `G` | Jump to top / bottom |
+| `PageUp` / `PageDown` | Scroll by half page |
+| `Ctrl+d` / `Ctrl+u` | Scroll by half page |
+| `Ctrl+c` | Force quit |
 
 ## Recording
 
@@ -61,13 +77,22 @@ chronocode -r mysession.json
 
 # Include file contents (enables preview/diff in the viewer)
 chronocode -c
+
+# Don't auto-open the viewer when session ends
+chronocode --no-open
 ```
 
 ## Replay
 
 ### Web viewer
 
-Open `replay.html` in your browser and drop a recording JSON onto it. Or use the link printed when a session ends.
+Open the viewer and drop a recording JSON onto it:
+
+```bash
+chronocode --viewer
+```
+
+Or use the link that auto-opens when a session ends.
 
 Controls: `Space` play/pause, `Arrow keys` step, `R` reset, `P` toggle preview, `S` share, click folders to collapse.
 
@@ -81,14 +106,15 @@ chronocode --replay session.json --replay-speed 3.0
 ### Share a recording
 
 ```bash
-# Generate a shareable URL
+# Generate a shareable command
 chronocode --share recordings/session.json
+# Output: chronocode --load eJy0zTEOgCAQBdDe...
 
-# With a custom base URL (e.g. if you host replay.html)
-chronocode --share session.json --share-base-url "https://mysite.com/replay.html"
+# Load a shared recording (opens the web viewer)
+chronocode --load eJy0zTEOgCAQBdDe...
 ```
 
-The URL contains the entire recording (compressed), so the recipient doesn't need the JSON file.
+The `--load` command contains the entire recording (compressed), so the recipient only needs the `chronocode` binary.
 
 ## Options
 
@@ -100,19 +126,20 @@ Arguments:
 
 Options:
   -a, --all                       Show hidden files and directories
-  -i, --interval <SECONDS>        Refresh interval [default: 1]
+  -i, --interval <SECONDS>        Refresh interval [default: 0.25]
   -f, --max-files <N>             Max files shown per directory
   -d, --max-depth <N>             Max tree depth
       --no-gitignore              Disable gitignore filtering
       --no-stats                  Hide statistics dashboard
       --no-record                 Disable automatic recording
+      --no-open                   Don't auto-open the viewer on exit
   -r, --record <FILE>             Record to a specific file
   -c, --content                   Include file contents in recording
       --replay <FILE>             Replay a recorded session
       --replay-speed <SPEED>      Replay speed multiplier [default: 1]
       --viewer                    Open the web replay viewer
-      --share <FILE>              Generate a shareable URL from a recording
-      --share-base-url <URL>      Base URL for share links
+      --share <FILE>              Generate a shareable command from a recording
+      --load <DATA>               Load a shared recording and open the viewer
   -V, --version                   Print version
   -h, --help                      Print help
 ```

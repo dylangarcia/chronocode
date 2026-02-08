@@ -71,27 +71,41 @@ fn color_from_name(name: &str) -> Color {
 /// before files; within each group entries are sorted alphabetically
 /// (case-insensitive).
 pub fn build_tree(root: &Path, state: &HashMap<PathBuf, FileInfo>) -> Vec<TreeNode> {
-    build_children(root, state)
+    // Single-pass: group all entries by their parent directory.
+    let mut children_map: HashMap<PathBuf, Vec<(PathBuf, bool)>> = HashMap::new();
+
+    for (path, info) in state {
+        if let Some(parent) = path.parent() {
+            children_map
+                .entry(parent.to_path_buf())
+                .or_default()
+                .push((path.clone(), info.is_dir));
+        }
+    }
+
+    build_from_map(root, &children_map)
 }
 
-/// Recursively collect direct children of `parent` from `state`.
-fn build_children(parent: &Path, state: &HashMap<PathBuf, FileInfo>) -> Vec<TreeNode> {
+/// Recursively build tree nodes from the pre-computed children map.
+fn build_from_map(
+    parent: &Path,
+    children_map: &HashMap<PathBuf, Vec<(PathBuf, bool)>>,
+) -> Vec<TreeNode> {
+    let Some(entries) = children_map.get(parent) else {
+        return Vec::new();
+    };
+
     let mut dirs: Vec<TreeNode> = Vec::new();
     let mut files: Vec<TreeNode> = Vec::new();
 
-    for (path, info) in state {
-        // Direct child check: parent of `path` must equal `parent`.
-        if path.parent() != Some(parent) {
-            continue;
-        }
-
+    for (path, is_dir) in entries {
         let name = path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let children = if info.is_dir {
-            build_children(path, state)
+        let children = if *is_dir {
+            build_from_map(path, children_map)
         } else {
             Vec::new()
         };
@@ -99,11 +113,11 @@ fn build_children(parent: &Path, state: &HashMap<PathBuf, FileInfo>) -> Vec<Tree
         let node = TreeNode {
             name,
             path: path.clone(),
-            is_dir: info.is_dir,
+            is_dir: *is_dir,
             children,
         };
 
-        if info.is_dir {
+        if *is_dir {
             dirs.push(node);
         } else {
             files.push(node);
@@ -171,11 +185,6 @@ fn filter_node(node: &TreeNode, query_lower: &str) -> Option<TreeNode> {
 // ---------------------------------------------------------------------------
 // Tree line rendering
 // ---------------------------------------------------------------------------
-
-/// The total display width of the name portion (leading space + Name + Status
-/// columns from the header).  Tree rows pad their name+badge section to this
-/// width so that the Size column always starts at the same position.
-const NAME_COL_TOTAL: usize = 1 + NAME_WIDTH as usize + STATUS_WIDTH as usize;
 
 /// Recursively build styled `Line`s representing the file tree.
 ///
@@ -280,7 +289,17 @@ pub fn render_tree_lines(
         used_width += UnicodeWidthStr::width(node.name.as_str());
         spans.push(Span::styled(node.name.clone(), name_style));
 
-        // 4. Status badge
+        // 4. Pad the name portion to fill the Name column (1 + NAME_WIDTH),
+        //    then render the status badge in the Status column.
+        let name_col_end = 1 + NAME_WIDTH as usize;
+        let name_pad = if used_width < name_col_end {
+            name_col_end - used_width
+        } else {
+            1 // at least one space if the name is very long
+        };
+        spans.push(Span::raw(" ".repeat(name_pad)));
+
+        // 5. Status badge — rendered at the start of the Status column.
         if !status_text.is_empty() {
             let badge_color = match status_text {
                 "NEW" => Color::Green,
@@ -288,9 +307,8 @@ pub fn render_tree_lines(
                 "DEL" => Color::Red,
                 _ => Color::Reset,
             };
-            spans.push(Span::raw(" "));
             let badge = format!("[{}]", status_text);
-            used_width += 1 + badge.len(); // space + badge (ASCII, so len == width)
+            let badge_width = badge.len();
             spans.push(Span::styled(
                 badge,
                 Style::default()
@@ -298,15 +316,13 @@ pub fn render_tree_lines(
                     .bg(badge_color)
                     .add_modifier(Modifier::BOLD),
             ));
-        }
-
-        // 5. Pad the name portion to NAME_COL_TOTAL so data columns align.
-        let pad = if used_width < NAME_COL_TOTAL {
-            NAME_COL_TOTAL - used_width
+            // Pad the rest of the Status column after the badge.
+            let status_pad = (STATUS_WIDTH as usize).saturating_sub(badge_width);
+            spans.push(Span::raw(" ".repeat(status_pad)));
         } else {
-            1 // at least one space separator if the name is very long
-        };
-        spans.push(Span::raw(" ".repeat(pad)));
+            // No status — fill the entire Status column with spaces.
+            spans.push(Span::raw(" ".repeat(STATUS_WIDTH as usize)));
+        }
 
         // For files (not dirs), show size, delta, LOC, LOC delta as
         // fixed-width right-aligned columns.
@@ -661,6 +677,7 @@ fn render_stats_dashboard(frame: &mut Frame, area: Rect, stats: &Stats) {
 /// Shows the search input bar when search is active, filter indicator when
 /// a filter is applied, or the normal legend otherwise.  Includes a scroll
 /// position indicator when the tree overflows the viewport.
+#[allow(clippy::too_many_arguments)]
 fn render_legend(
     frame: &mut Frame,
     area: Rect,
@@ -669,6 +686,7 @@ fn render_legend(
     scroll_offset: u16,
     total_lines: u16,
     viewport_height: u16,
+    last_error: Option<&str>,
 ) {
     let mut spans: Vec<Span<'static>> = if search_active {
         // Search input mode: show the search bar with cursor.
@@ -735,6 +753,14 @@ fn render_legend(
             ),
         ]
     };
+
+    // Show watcher error if present.
+    if let Some(err) = last_error {
+        spans.push(Span::styled(
+            format!("  [!] {}", err),
+            Style::default().fg(Color::Red),
+        ));
+    }
 
     // Show scroll position indicator when content overflows the viewport.
     if total_lines > viewport_height {
@@ -810,6 +836,7 @@ pub fn render_ui(
     scroll_offset: u16,
     search_query: &str,
     search_active: bool,
+    last_error: Option<&str>,
 ) -> u16 {
     let size = frame.area();
 
@@ -890,6 +917,7 @@ pub fn render_ui(
         scroll_offset,
         total_tree_lines,
         tree_area.height,
+        last_error,
     );
 
     total_tree_lines
@@ -932,7 +960,6 @@ mod tests {
         state.insert(
             PathBuf::from("/project/zebra.txt"),
             FileInfo {
-                path: PathBuf::from("/project/zebra.txt"),
                 size: 100,
                 modified: 0.0,
                 is_dir: false,
@@ -942,7 +969,6 @@ mod tests {
         state.insert(
             PathBuf::from("/project/alpha"),
             FileInfo {
-                path: PathBuf::from("/project/alpha"),
                 size: 0,
                 modified: 0.0,
                 is_dir: true,
@@ -952,7 +978,6 @@ mod tests {
         state.insert(
             PathBuf::from("/project/beta.rs"),
             FileInfo {
-                path: PathBuf::from("/project/beta.rs"),
                 size: 200,
                 modified: 0.0,
                 is_dir: false,
@@ -978,7 +1003,6 @@ mod tests {
         state.insert(
             PathBuf::from("/project/hello.rs"),
             FileInfo {
-                path: PathBuf::from("/project/hello.rs"),
                 size: 512,
                 modified: 0.0,
                 is_dir: false,
@@ -1014,7 +1038,6 @@ mod tests {
         state.insert(
             PathBuf::from("/project/src"),
             FileInfo {
-                path: PathBuf::from("/project/src"),
                 size: 0,
                 modified: 0.0,
                 is_dir: true,
@@ -1024,7 +1047,6 @@ mod tests {
         state.insert(
             PathBuf::from("/project/src/main.rs"),
             FileInfo {
-                path: PathBuf::from("/project/src/main.rs"),
                 size: 1024,
                 modified: 0.0,
                 is_dir: false,

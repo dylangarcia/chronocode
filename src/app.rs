@@ -15,11 +15,9 @@ use crate::cli::Cli;
 use crate::recording::EventLogger;
 use crate::renderer;
 use crate::scanner::ChangeTracker;
+use crate::server;
 use crate::statistics::StatisticsTracker;
 use crate::watcher::{FileWatcher, WatchEvent};
-
-/// The replay viewer HTML, embedded into the binary at compile time.
-const REPLAY_HTML: &str = include_str!("../replay.html");
 
 /// Main application state and run loop.
 pub struct App {
@@ -31,13 +29,14 @@ pub struct App {
     pub max_depth: Option<usize>,
     pub max_files: Option<usize>,
     pub refresh_interval: Duration,
-    pub running: bool,
     pub scroll_offset: u16,
     pub total_tree_lines: u16,
     /// Whether the search input bar is actively accepting keystrokes.
     pub search_active: bool,
     /// The current search/filter query string.
     pub search_query: String,
+    /// Last watcher error message, if any.
+    pub last_error: Option<String>,
 }
 
 impl App {
@@ -100,11 +99,11 @@ impl App {
             max_depth: cli.max_depth,
             max_files: cli.max_files,
             refresh_interval,
-            running: true,
             scroll_offset: 0,
             total_tree_lines: 0,
             search_active: false,
             search_query: String::new(),
+            last_error: None,
         })
     }
 
@@ -144,62 +143,10 @@ impl App {
     }
 
     /// Open the recording in the web viewer via a local HTTP server.
-    /// The HTML is embedded in the binary — no external files needed.
     fn open_viewer(&self, recording_path: &std::path::Path) -> Result<()> {
-        use std::process::{Command, Stdio};
-
         let encoded = self.compress_recording(recording_path)?;
-
-        // Write the embedded HTML to a temp directory.
-        let tmp_dir = std::env::temp_dir().join("chronocode-viewer");
-        std::fs::create_dir_all(&tmp_dir)?;
-        let html_path = tmp_dir.join("index.html");
-        std::fs::write(&html_path, REPLAY_HTML)?;
-
-        // Pick a free port.
-        let port = {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-            listener.local_addr()?.port()
-        };
-
-        // Spawn a local server. Try python3 first, then npx serve.
-        let mut server = Command::new("python3")
-            .args([
-                "-m",
-                "http.server",
-                &port.to_string(),
-                "--bind",
-                "127.0.0.1",
-            ])
-            .current_dir(&tmp_dir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .or_else(|_| {
-                Command::new("npx")
-                    .args(["serve", "-l", &port.to_string(), "-s", "."])
-                    .current_dir(&tmp_dir)
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-            })
-            .map_err(|_| anyhow::anyhow!("Could not start a local server (need python3 or npx)"))?;
-
-        // Give the server a moment to bind.
-        std::thread::sleep(Duration::from_millis(300));
-
-        let url = format!("http://127.0.0.1:{}/#data={}", port, encoded);
-
-        println!("Opening viewer at http://127.0.0.1:{} ...", port);
-        open::that(&url)?;
-
-        // Give the browser time to load the page and all assets,
-        // then tear down the server. Once loaded, the page is self-contained.
-        std::thread::sleep(Duration::from_secs(3));
-        let _ = server.kill();
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-
-        Ok(())
+        let fragment = format!("data={}", encoded);
+        server::serve_and_open(Some(&fragment))
     }
 
     /// Run the main TUI event loop.
@@ -230,13 +177,35 @@ impl App {
 
         // 4. Main loop.
         let mut last_update = Instant::now();
+        let mut pending_change = false;
 
         loop {
+            // --- Check for filesystem changes (non-blocking) ---
+            // Drain all pending watcher events.
+            loop {
+                match watch_rx.try_recv() {
+                    Ok(WatchEvent::FileChanged) => pending_change = true,
+                    Ok(WatchEvent::Error(msg)) => {
+                        self.last_error = Some(msg);
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            // Apply pending changes once the refresh interval has elapsed.
+            if pending_change && last_update.elapsed() >= self.refresh_interval {
+                self.tracker.update(&self.root_path);
+                self.last_error = None;
+                last_update = Instant::now();
+                pending_change = false;
+            }
+
             // --- Draw ---
             let scroll_offset = self.scroll_offset;
             let mut total_lines_out: u16 = 0;
             let search_query = self.search_query.clone();
             let search_active = self.search_active;
+            let last_error = self.last_error.clone();
             terminal.draw(|frame| {
                 let stats = self.tracker.stats_tracker.as_ref().map(|st| st.get_stats());
                 total_lines_out = renderer::render_ui(
@@ -253,12 +222,15 @@ impl App {
                     scroll_offset,
                     &search_query,
                     search_active,
+                    last_error.as_deref(),
                 );
             })?;
             self.total_tree_lines = total_lines_out;
 
             // --- Handle keyboard events ---
-            if event::poll(Duration::from_millis(100))? {
+            // Use a short poll timeout so we cycle back quickly to check
+            // for filesystem changes.
+            if event::poll(Duration::from_millis(50))? {
                 if let Event::Key(key) = event::read()? {
                     // Ctrl+C always quits, regardless of search state.
                     if key.code == KeyCode::Char('c')
@@ -369,16 +341,6 @@ impl App {
                     }
                 }
             }
-
-            // --- Check for filesystem changes (non-blocking) ---
-            if let Ok(WatchEvent::FileChanged) = watch_rx.try_recv() {
-                if last_update.elapsed() >= self.refresh_interval {
-                    // Drain any additional queued events.
-                    while watch_rx.try_recv().is_ok() {}
-                    self.tracker.update(&self.root_path);
-                    last_update = Instant::now();
-                }
-            }
         }
 
         // 5. Cleanup — restore the terminal.
@@ -403,33 +365,38 @@ impl App {
         }
 
         // Finalize recording and open viewer.
-        if let Some(ref logger) = self.tracker.event_logger {
+        // Extract data from the logger before calling self methods to avoid
+        // borrow conflicts.
+        let recording_info = if let Some(ref mut logger) = self.tracker.event_logger {
             logger.finalize();
             let event_count = logger.events.len();
+            logger.output_path.clone().map(|p| (p, event_count))
+        } else {
+            None
+        };
 
-            if let Some(ref output_path) = logger.output_path {
-                println!(
-                    "Recording saved: {} ({} events)",
-                    output_path.display(),
-                    event_count
-                );
+        if let Some((output_path, event_count)) = recording_info {
+            println!(
+                "Recording saved: {} ({} events)",
+                output_path.display(),
+                event_count
+            );
 
-                // Print a shareable command so users can send the recording.
-                match self.compress_recording(output_path) {
-                    Ok(encoded) => {
-                        println!();
-                        println!("Share this recording:");
-                        println!("  chronocode --load {}", encoded);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to generate share command: {}", e);
-                    }
+            // Print a shareable command so users can send the recording.
+            match self.compress_recording(&output_path) {
+                Ok(encoded) => {
+                    println!();
+                    println!("Share this recording:");
+                    println!("  chronocode --load {}", encoded);
                 }
+                Err(e) => {
+                    eprintln!("Failed to generate share command: {}", e);
+                }
+            }
 
-                if self.auto_open_viewer {
-                    if let Err(e) = self.open_viewer(output_path) {
-                        eprintln!("Failed to open viewer: {}", e);
-                    }
+            if self.auto_open_viewer {
+                if let Err(e) = self.open_viewer(&output_path) {
+                    eprintln!("Failed to open viewer: {}", e);
                 }
             }
         }

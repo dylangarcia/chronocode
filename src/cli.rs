@@ -16,7 +16,7 @@ pub struct Cli {
     pub all: bool,
 
     /// Refresh interval in seconds
-    #[arg(short = 'i', long = "interval", default_value_t = 1.0)]
+    #[arg(short = 'i', long = "interval", default_value_t = 0.25)]
     pub interval: f64,
 
     /// Maximum files per directory
@@ -70,10 +70,4 @@ pub struct Cli {
     /// Load a shared recording and open the viewer
     #[arg(long = "load")]
     pub load: Option<String>,
-}
-
-impl Cli {
-    pub fn parse_args() -> Self {
-        Cli::parse()
-    }
 }

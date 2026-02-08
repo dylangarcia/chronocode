@@ -17,6 +17,11 @@ pub struct RecordingStats {
     pub duration_seconds: f64,
 }
 
+/// How many events to accumulate before flushing to disk.
+const WRITE_BATCH_SIZE: usize = 50;
+/// Maximum seconds between disk writes.
+const WRITE_INTERVAL_SECS: f64 = 5.0;
+
 /// Logs file system events for later replay with continuous file writing.
 pub struct EventLogger {
     pub events: Vec<FileEvent>,
@@ -25,6 +30,10 @@ pub struct EventLogger {
     pub output_path: Option<PathBuf>,
     pub root_path: Option<PathBuf>,
     pub record_content: bool,
+    /// Number of events already flushed to disk.
+    events_written: usize,
+    /// Timestamp of the last disk write (seconds since UNIX epoch).
+    last_write_time: f64,
 }
 
 impl EventLogger {
@@ -41,6 +50,8 @@ impl EventLogger {
             output_path,
             root_path,
             record_content,
+            events_written: 0,
+            last_write_time: 0.0,
         }
     }
 
@@ -102,7 +113,7 @@ impl EventLogger {
     }
 
     /// Write the complete valid JSON file atomically (write to .tmp, then rename).
-    fn write_file(&self) {
+    fn write_file(&mut self) {
         let Some(output_path) = &self.output_path else {
             return;
         };
@@ -123,7 +134,14 @@ impl EventLogger {
 
         if let Err(e) = fs::rename(&temp_path, output_path) {
             eprintln!("Warning: failed to rename temp file: {e}");
+            return;
         }
+
+        self.events_written = self.events.len();
+        self.last_write_time = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs_f64();
     }
 
     /// Log a file system event and write to file immediately.
@@ -168,14 +186,19 @@ impl EventLogger {
         };
         self.events.push(event);
 
-        // Write complete valid JSON file after each event
+        // Write to disk in batches rather than after every event to avoid
+        // O(n²) serialization cost over a session.
         if self.output_path.is_some() {
-            self.write_file();
+            let pending = self.events.len() - self.events_written;
+            let elapsed = now - self.last_write_time;
+            if pending >= WRITE_BATCH_SIZE || elapsed >= WRITE_INTERVAL_SECS {
+                self.write_file();
+            }
         }
     }
 
     /// Finalize the recording (writes final state).
-    pub fn finalize(&self) {
+    pub fn finalize(&mut self) {
         if self.output_path.is_some() {
             self.write_file();
         }
@@ -209,6 +232,8 @@ impl EventLogger {
             output_path: None,
             root_path: None,
             record_content: false,
+            events_written: 0,
+            last_write_time: 0.0,
         })
     }
 

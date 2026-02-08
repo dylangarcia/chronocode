@@ -427,9 +427,19 @@
         .tree-size {
             color: #8b949e;
             font-size: 11px;
-            min-width: 60px;
+            width: 60px;
             text-align: right;
             margin-right: 8px;
+            flex-shrink: 0;
+        }
+
+        .tree-loc {
+            color: #6e7681;
+            font-size: 11px;
+            width: 50px;
+            text-align: right;
+            margin-right: 8px;
+            flex-shrink: 0;
         }
 
         .tree-status {
@@ -437,8 +447,9 @@
             font-weight: 600;
             padding: 2px 6px;
             border-radius: 3px;
-            min-width: 40px;
+            width: 40px;
             text-align: center;
+            flex-shrink: 0;
         }
 
         .tree-status.created {
@@ -449,6 +460,11 @@
         .tree-status.modified {
             background: rgba(210, 153, 34, 0.2);
             color: #d29922;
+        }
+
+        .tree-status.deleted {
+            background: rgba(248, 81, 73, 0.2);
+            color: #f85149;
         }
 
         /* Content Preview Panel */
@@ -815,6 +831,42 @@
             font-size: 10px;
         }
 
+        /* Tree Column Header */
+        .tree-header {
+            display: flex;
+            align-items: center;
+            padding: 4px 16px;
+            font-size: 11px;
+            color: #484f58;
+            border-bottom: 1px solid #21262d;
+            position: sticky;
+            top: 0;
+            background: #0d1117;
+            z-index: 1;
+            user-select: none;
+        }
+
+        .tree-header-name {
+            flex: 1;
+        }
+
+        .tree-header-size {
+            width: 60px;
+            text-align: right;
+            margin-right: 8px;
+        }
+
+        .tree-header-loc {
+            width: 50px;
+            text-align: right;
+            margin-right: 8px;
+        }
+
+        .tree-header-status {
+            width: 40px;
+            text-align: center;
+        }
+
         /* Empty State */
         .empty-state {
             display: flex;
@@ -1034,6 +1086,12 @@
         <!-- Main Content -->
         <div class="main-content" id="mainContent">
             <div class="file-tree" id="fileTree">
+                <div class="tree-header" id="treeHeader" style="display: none;">
+                    <span class="tree-header-name">Name</span>
+                    <span class="tree-header-size">Size</span>
+                    <span class="tree-header-loc">LOC</span>
+                    <span class="tree-header-status">Status</span>
+                </div>
                 <div class="empty-state" id="emptyState">No files yet</div>
             </div>
             <div class="content-panel" id="contentPanel">
@@ -1184,6 +1242,7 @@
                 
                 this.mainContent = document.getElementById('mainContent');
                 this.fileTree = document.getElementById('fileTree');
+                this.treeHeader = document.getElementById('treeHeader');
                 this.emptyState = document.getElementById('emptyState');
                 this.eventList = document.getElementById('eventList');
                 this.eventCount = document.getElementById('eventCount');
@@ -1363,10 +1422,8 @@
                 this.renderEventMarkers();
                 this.updateTimeDisplay();
                 
+                // Start paused so users can inspect the initial state.
                 this.reset();
-                if (this.events.length > 0) {
-                    this.play();
-                }
             }
 
             buildContentHistory() {
@@ -1587,6 +1644,7 @@
                         path: item.path,
                         size: item.size,
                         is_dir: item.is_dir,
+                        loc: item.loc || 0,
                         status: null,
                         content: item.content
                     });
@@ -1653,6 +1711,7 @@
                         path,
                         size: event.size,
                         is_dir: event.is_dir,
+                        loc: event.loc || 0,
                         status: event.event_type,
                         content: event.content
                     });
@@ -1700,6 +1759,7 @@
                         existing.isDir = info.is_dir;
                         existing.path = path;
                         existing.size = info.size;
+                        existing.loc = info.loc;
                         existing.status = info.status;
                         existing.content = info.content;
                     } else {
@@ -1709,6 +1769,7 @@
                             isDir: info.is_dir,
                             path: path,
                             size: info.size,
+                            loc: info.loc,
                             status: info.status,
                             content: info.content
                         });
@@ -1751,18 +1812,21 @@
                 }
                 const icon = this.getFileIcon(item.name, item.isDir);
                 const size = item.isDir ? '' : this.formatSize(item.size || 0);
-                const statusHtml = item.status ? 
-                    `<span class="tree-status ${item.status}">${item.status.substring(0, 3).toUpperCase()}</span>` : '';
-                return `${indent}${chevronHtml}<span class="tree-icon">${icon}</span><span class="tree-name ${item.isDir ? 'is-dir' : ''}">${item.name}</span><span class="tree-size">${size}</span>${statusHtml}`;
+                const loc = (!item.isDir && item.loc) ? `${item.loc}` : '';
+                const statusLabel = item.status ? item.status.substring(0, 3).toUpperCase() : '';
+                const statusClass = item.status ? ` ${item.status}` : '';
+                return `${indent}${chevronHtml}<span class="tree-icon">${icon}</span><span class="tree-name ${item.isDir ? 'is-dir' : ''}">${item.name}</span><span class="tree-size">${size}</span><span class="tree-loc">${loc}</span><span class="tree-status${statusClass}">${statusLabel}</span>`;
             }
 
             updateDisplay() {
                 if (this.currentState.size === 0) {
                     this.fileTree.querySelectorAll('.tree-row').forEach(el => el.remove());
                     this.emptyState.style.display = 'flex';
+                    this.treeHeader.style.display = 'none';
                     return;
                 }
                 this.emptyState.style.display = 'none';
+                this.treeHeader.style.display = 'flex';
                 
                 const tree = this.buildTree();
                 const items = this.flattenTree(tree);
@@ -2054,17 +2118,53 @@
             }
 
             simpleLCS(arr1, arr2) {
-                // Simplified LCS for large files - just find matching lines
-                const result = [];
-                const set2 = new Set(arr2);
-                
-                for (const line of arr1) {
-                    if (set2.has(line)) {
-                        result.push(line);
-                    }
+                // Hirschberg's algorithm: O(mn) time, O(min(m,n)) space.
+                // Returns the actual longest common subsequence.
+                const m = arr1.length, n = arr2.length;
+
+                if (m === 0) return [];
+                if (n === 0) return [];
+                if (m === 1) {
+                    return arr2.includes(arr1[0]) ? [arr1[0]] : [];
                 }
-                
-                return result;
+                if (n === 1) {
+                    return arr1.includes(arr2[0]) ? [arr2[0]] : [];
+                }
+
+                // Compute last row of LCS lengths for arr1[0..r] vs arr2
+                const lcsLens = (a, b) => {
+                    let prev = new Uint32Array(b.length + 1);
+                    let curr = new Uint32Array(b.length + 1);
+                    for (let i = 0; i < a.length; i++) {
+                        for (let j = 0; j < b.length; j++) {
+                            curr[j + 1] = a[i] === b[j]
+                                ? prev[j] + 1
+                                : Math.max(curr[j], prev[j + 1]);
+                        }
+                        [prev, curr] = [curr, prev];
+                        curr.fill(0);
+                    }
+                    return prev;
+                };
+
+                const mid = Math.floor(m / 2);
+                const top = arr1.slice(0, mid);
+                const bot = arr1.slice(mid);
+
+                const rowTop = lcsLens(top, arr2);
+                const rowBot = lcsLens([...bot].reverse(), [...arr2].reverse());
+
+                // Find the split point in arr2 that maximises rowTop[j] + rowBot[n-j]
+                let best = 0, split = 0;
+                for (let j = 0; j <= n; j++) {
+                    const s = rowTop[j] + rowBot[n - j];
+                    if (s > best) { best = s; split = j; }
+                }
+
+                return [
+                    ...this.simpleLCS(top, arr2.slice(0, split)),
+                    ...this.simpleLCS(bot, arr2.slice(split)),
+                ];
             }
 
             escapeHtml(text) {

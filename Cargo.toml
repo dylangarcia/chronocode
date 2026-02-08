@@ -30,7 +30,6 @@ clap = { version = "4", features = ["derive"] }
 
 # File watching
 notify = "7"
-notify-debouncer-mini = "0.5"
 
 # File traversal
 walkdir = "2"

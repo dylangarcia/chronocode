@@ -9,6 +9,9 @@ use crate::recording::EventLogger;
 use crate::state::{get_loc, ChangeSet, EventType, FileInfo};
 use crate::statistics::StatisticsTracker;
 
+/// Cached LOC entry: `(mtime, size, loc)`.
+type LocCacheEntry = (f64, u64, usize);
+
 /// Tracks directory state across scans and detects file-level changes.
 pub struct ChangeTracker {
     pub previous_state: HashMap<PathBuf, FileInfo>,
@@ -20,6 +23,9 @@ pub struct ChangeTracker {
     gitignore_parser: Option<GitignoreParser>,
     pub event_logger: Option<EventLogger>,
     pub stats_tracker: Option<StatisticsTracker>,
+    /// Cache of LOC counts keyed by path.  Only recount when mtime or size
+    /// changes compared to the cached values.
+    loc_cache: HashMap<PathBuf, LocCacheEntry>,
 }
 
 impl ChangeTracker {
@@ -50,6 +56,7 @@ impl ChangeTracker {
             gitignore_parser,
             event_logger,
             stats_tracker,
+            loc_cache: HashMap::new(),
         }
     }
 
@@ -99,7 +106,7 @@ impl ChangeTracker {
 
     /// Perform a full directory scan rooted at `root_path` and return a map
     /// of every discovered path to its [`FileInfo`].
-    pub fn scan_directory(&self, root_path: &Path) -> HashMap<PathBuf, FileInfo> {
+    pub fn scan_directory(&mut self, root_path: &Path) -> HashMap<PathBuf, FileInfo> {
         let mut state: HashMap<PathBuf, FileInfo> = HashMap::new();
 
         // Add the root directory itself.
@@ -114,7 +121,6 @@ impl ChangeTracker {
             state.insert(
                 root_path.to_path_buf(),
                 FileInfo {
-                    path: root_path.to_path_buf(),
                     size: 0,
                     modified: mtime,
                     is_dir: true,
@@ -174,12 +180,27 @@ impl ChangeTracker {
 
             if meta.is_file() {
                 let size = meta.len();
-                let loc = get_loc(&path);
+
+                // Use cached LOC count if mtime and size haven't changed.
+                let loc = if let Some(&(cached_mtime, cached_size, cached_loc)) =
+                    self.loc_cache.get(&path)
+                {
+                    if cached_mtime == mtime && cached_size == size {
+                        cached_loc
+                    } else {
+                        let new_loc = get_loc(&path);
+                        self.loc_cache.insert(path.clone(), (mtime, size, new_loc));
+                        new_loc
+                    }
+                } else {
+                    let new_loc = get_loc(&path);
+                    self.loc_cache.insert(path.clone(), (mtime, size, new_loc));
+                    new_loc
+                };
 
                 state.insert(
-                    path.clone(),
+                    path,
                     FileInfo {
-                        path,
                         size,
                         modified: mtime,
                         is_dir: false,
@@ -188,9 +209,8 @@ impl ChangeTracker {
                 );
             } else if meta.is_dir() {
                 state.insert(
-                    path.clone(),
+                    path,
                     FileInfo {
-                        path,
                         size: 0,
                         modified: mtime,
                         is_dir: true,
@@ -281,46 +301,10 @@ impl ChangeTracker {
                 tracker.record_event("modified", info.size, info.is_dir, ext);
             }
         }
-    }
 
-    // ------------------------------------------------------------------
-    // Query helpers
-    // ------------------------------------------------------------------
-
-    /// Return the change type for a path: `"added"`, `"modified"`, or
-    /// `"deleted"`.  Returns `None` if the path was not changed.
-    pub fn get_change_type(&self, path: &Path) -> Option<&str> {
-        let pb = path.to_path_buf();
-        if self.changes.added.contains(&pb) {
-            Some("added")
-        } else if self.changes.modified.contains(&pb) {
-            Some("modified")
-        } else if self.changes.deleted.contains(&pb) {
-            Some("deleted")
-        } else {
-            None
-        }
-    }
-
-    /// Compute the size delta (in bytes) for a modified file.
-    ///
-    /// Returns 0 for files that are not present in both states.
-    pub fn get_size_delta(&self, path: &Path) -> i64 {
-        let pb = path.to_path_buf();
-        match (self.current_state.get(&pb), self.previous_state.get(&pb)) {
-            (Some(curr), Some(prev)) => curr.size as i64 - prev.size as i64,
-            _ => 0,
-        }
-    }
-
-    /// Compute the LOC delta for a modified file.
-    ///
-    /// Returns 0 for files that are not present in both states.
-    pub fn get_loc_delta(&self, path: &Path) -> i64 {
-        let pb = path.to_path_buf();
-        match (self.current_state.get(&pb), self.previous_state.get(&pb)) {
-            (Some(curr), Some(prev)) => curr.loc as i64 - prev.loc as i64,
-            _ => 0,
+        // Evict deleted paths from the LOC cache.
+        for path in &deleted {
+            self.loc_cache.remove(path);
         }
     }
 }

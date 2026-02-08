@@ -8,14 +8,14 @@ use globset::{Glob, GlobMatcher};
 /// Parsed representation of a single gitignore rule.
 struct Rule {
     /// The original pattern string (after stripping negation prefix and trailing slash).
-    pattern: String,
+    _pattern: String,
     /// Whether this rule is a negation (line started with `!`).
     is_negation: bool,
     /// Whether the original pattern had a trailing `/` (directory-only match).
     dir_only: bool,
     /// Whether the pattern is anchored (contains `/` so it must match from the
     /// .gitignore's directory root rather than any path component).
-    anchored: bool,
+    _anchored: bool,
     /// Compiled glob matcher.
     matcher: GlobMatcher,
 }
@@ -164,10 +164,10 @@ impl GitignoreParser {
         let matcher = Glob::new(&glob_expr).ok()?.compile_matcher();
 
         Some(Rule {
-            pattern: pattern.to_string(),
+            _pattern: pattern.to_string(),
             is_negation,
             dir_only,
-            anchored,
+            _anchored: anchored,
             matcher,
         })
     }
@@ -180,6 +180,7 @@ impl GitignoreParser {
     /// `pattern`.  This uses glob-style matching and mirrors the logic encoded
     /// in `compile_rule` / `Rule::matcher` but is provided as a standalone
     /// helper for callers that only need a one-shot test.
+    #[cfg(test)]
     pub fn match_pattern(rel_path: &str, pattern: &str) -> bool {
         let mut pat = pattern.to_string();
 

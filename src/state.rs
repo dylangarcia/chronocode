@@ -25,23 +25,10 @@ pub enum EventType {
 
 #[derive(Clone, Debug)]
 pub struct FileInfo {
-    pub path: PathBuf,
     pub size: u64,
     pub modified: f64,
     pub is_dir: bool,
     pub loc: usize,
-}
-
-impl Default for FileInfo {
-    fn default() -> Self {
-        Self {
-            path: PathBuf::new(),
-            size: 0,
-            modified: 0.0,
-            is_dir: false,
-            loc: 0,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -92,21 +79,21 @@ pub fn get_file_emoji(filename: &str, is_dir: bool) -> &'static str {
         .to_lowercase();
 
     match ext.as_str() {
-        "py" => "\u{1F40D}",                                             // 🐍
-        "js" | "jsx" => "\u{1F4DC}",                                     // 📜
-        "ts" | "tsx" => "\u{1F4D8}",                                     // 📘
-        "json" => "\u{1F4CB}",                                           // 📋
-        "md" => "\u{1F4DD}",                                             // 📝
-        "txt" => "\u{1F4C4}",                                            // 📄
-        "png" | "jpg" | "jpeg" | "gif" | "svg" => "\u{1F5BC}\u{FE0F} ",  // 🖼️
-        "mp4" => "\u{1F3AC}",                                            // 🎬
-        "mp3" => "\u{1F3B5}",                                            // 🎵
-        "zip" | "tar" | "gz" => "\u{1F4E6}",                             // 📦
-        "yaml" | "yml" | "toml" | "ini" | "conf" => "\u{2699}\u{FE0F} ", // ⚙️
-        "gitignore" => "\u{1F500}",                                      // 🔀
-        "lock" => "\u{1F512}",                                           // 🔒
-        "pdf" | "doc" | "docx" => "\u{1F4DA}",                           // 📚
-        _ => "\u{1F4C4}",                                                // 📄
+        "py" => "\u{1F40D}",                                            // 🐍
+        "js" | "jsx" => "\u{1F4DC}",                                    // 📜
+        "ts" | "tsx" => "\u{1F4D8}",                                    // 📘
+        "json" => "\u{1F4CB}",                                          // 📋
+        "md" => "\u{1F4DD}",                                            // 📝
+        "txt" => "\u{1F4C4}",                                           // 📄
+        "png" | "jpg" | "jpeg" | "gif" | "svg" => "\u{1F5BC}\u{FE0F}",  // 🖼️
+        "mp4" => "\u{1F3AC}",                                           // 🎬
+        "mp3" => "\u{1F3B5}",                                           // 🎵
+        "zip" | "tar" | "gz" => "\u{1F4E6}",                            // 📦
+        "yaml" | "yml" | "toml" | "ini" | "conf" => "\u{2699}\u{FE0F}", // ⚙️
+        "gitignore" => "\u{1F500}",                                     // 🔀
+        "lock" => "\u{1F512}",                                          // 🔒
+        "pdf" | "doc" | "docx" => "\u{1F4DA}",                          // 📚
+        _ => "\u{1F4C4}",                                               // 📄
     }
 }
 
@@ -305,21 +292,6 @@ pub fn format_loc(loc: usize) -> String {
         format!("{}kL", loc / 1_000)
     } else {
         format!("{}ML", loc / 1_000_000)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Conversion helpers for EventType
-// ---------------------------------------------------------------------------
-
-impl EventType {
-    /// Return the string representation matching the serde serialization.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            EventType::Created => "created",
-            EventType::Modified => "modified",
-            EventType::Deleted => "deleted",
-        }
     }
 }
 

@@ -11,7 +11,6 @@ pub struct Stats {
     pub peak_files: i64,
     pub peak_dirs: i64,
     pub events_per_minute: usize,
-    pub total_bytes: i64,
     /// Activity buckets: each element is (created_count, modified_count, deleted_count)
     /// for a time slice of the session.
     pub activity_buckets: Vec<(usize, usize, usize)>,
@@ -194,7 +193,6 @@ impl StatisticsTracker {
             peak_files: self.peak_files,
             peak_dirs: self.peak_dirs,
             events_per_minute: self.events_per_minute.len(),
-            total_bytes: self.total_bytes,
             activity_buckets: self.get_activity_buckets(50),
             top_extensions: self.get_top_extensions(5),
         }
