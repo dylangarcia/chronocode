@@ -420,10 +420,102 @@ fn render_summary_line(state: &HashMap<PathBuf, FileInfo>, changes: &ChangeSet) 
 // Stats dashboard
 // ---------------------------------------------------------------------------
 
+/// Map activity buckets to a sparkline string using Unicode block characters.
+///
+/// Each bucket becomes one character whose height is proportional to the total
+/// event count in that bucket relative to the maximum across all buckets.
+/// Returns `(sparkline_string, colors)` where `colors` contains the dominant
+/// colour for each bucket character.
+fn build_sparkline(buckets: &[(usize, usize, usize)], width: usize) -> (String, Vec<Color>) {
+    const BLOCKS: &[char] = &[' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+
+    // Resample buckets to `width` columns if the lengths differ.
+    let resampled: Vec<(usize, usize, usize)> = if buckets.is_empty() {
+        vec![(0, 0, 0); width]
+    } else if buckets.len() == width {
+        buckets.to_vec()
+    } else {
+        let mut out = vec![(0, 0, 0); width];
+        for (i, b) in buckets.iter().enumerate() {
+            let idx = (i * width) / buckets.len();
+            let idx = idx.min(width - 1);
+            out[idx].0 += b.0;
+            out[idx].1 += b.1;
+            out[idx].2 += b.2;
+        }
+        out
+    };
+
+    let max_total = resampled
+        .iter()
+        .map(|(c, m, d)| c + m + d)
+        .max()
+        .unwrap_or(0);
+
+    let mut chars = String::with_capacity(width);
+    let mut colors = Vec::with_capacity(width);
+
+    for (c, m, d) in &resampled {
+        let total = c + m + d;
+        let level = if max_total == 0 {
+            0
+        } else {
+            ((total * 8) / max_total).min(8)
+        };
+        chars.push(BLOCKS[level]);
+
+        // Dominant colour: green for creates, yellow for modifies, red for deletes.
+        let color = if total == 0 {
+            Color::DarkGray
+        } else if *c >= *m && *c >= *d {
+            Color::Green
+        } else if *m >= *c && *m >= *d {
+            Color::Yellow
+        } else {
+            Color::Red
+        };
+        colors.push(color);
+    }
+
+    (chars, colors)
+}
+
 /// Render the development statistics dashboard.
 fn render_stats_dashboard(frame: &mut Frame, area: Rect, stats: &Stats) {
     let duration_str = StatisticsTracker::format_duration(stats.session_duration);
     let events_rate = stats.events_per_minute;
+
+    // --- Activity timeline sparkline ---
+    let chart_width: usize = 50;
+    let (sparkline, colors) = build_sparkline(&stats.activity_buckets, chart_width);
+
+    let mut timeline_spans: Vec<Span<'static>> = vec![Span::styled(
+        " Activity: ",
+        Style::default().fg(Color::DarkGray),
+    )];
+    // Each character gets its own colour span.
+    for (ch, color) in sparkline.chars().zip(colors.iter()) {
+        timeline_spans.push(Span::styled(ch.to_string(), Style::default().fg(*color)));
+    }
+
+    // --- Top extensions line ---
+    let mut ext_spans: Vec<Span<'static>> = vec![Span::styled(
+        " Top types: ",
+        Style::default().fg(Color::DarkGray),
+    )];
+    if stats.top_extensions.is_empty() {
+        ext_spans.push(Span::styled("(none)", Style::default().fg(Color::DarkGray)));
+    } else {
+        for (i, (ext, count)) in stats.top_extensions.iter().enumerate() {
+            if i > 0 {
+                ext_spans.push(Span::styled(" ", Style::default().fg(Color::DarkGray)));
+            }
+            ext_spans.push(Span::styled(
+                format!("{}({})", ext, count),
+                Style::default().fg(Color::Cyan),
+            ));
+        }
+    }
 
     let lines = vec![
         Line::from(vec![
@@ -472,6 +564,8 @@ fn render_stats_dashboard(frame: &mut Frame, area: Rect, stats: &Stats) {
                 Style::default().fg(Color::DarkGray),
             ),
         ]),
+        Line::from(timeline_spans),
+        Line::from(ext_spans),
     ];
 
     let text = Text::from(lines);
@@ -583,7 +677,7 @@ pub fn render_ui(
 
     // ----- Determine layout constraints -----
 
-    let stats_height: u16 = if show_stats && stats.is_some() { 7 } else { 0 };
+    let stats_height: u16 = if show_stats && stats.is_some() { 9 } else { 0 };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
