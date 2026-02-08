@@ -14,11 +14,10 @@ pub struct FileWatcher {
 }
 
 impl FileWatcher {
-    /// Create a new file watcher that monitors `path` recursively.
-    /// Returns the watcher and a receiver that will get `WatchEvent::FileChanged`
-    /// whenever filesystem changes are detected (debounced).
-    pub fn new(
-        path: &Path,
+    /// Create a new file watcher that monitors multiple paths recursively.
+    /// All paths share a single watcher and channel.
+    pub fn new_multi(
+        paths: &[&Path],
         _debounce_duration: Duration,
     ) -> anyhow::Result<(Self, mpsc::Receiver<WatchEvent>)> {
         let (tx, rx) = mpsc::channel();
@@ -38,7 +37,9 @@ impl FileWatcher {
                 }
             })?;
 
-        watcher.watch(path, RecursiveMode::Recursive)?;
+        for path in paths {
+            watcher.watch(path, RecursiveMode::Recursive)?;
+        }
 
         Ok((Self { _watcher: watcher }, rx))
     }

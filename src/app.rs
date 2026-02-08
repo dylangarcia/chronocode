@@ -12,6 +12,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
 use crate::cli::Cli;
+use crate::git;
 use crate::recording::EventLogger;
 use crate::renderer;
 use crate::scanner::ChangeTracker;
@@ -37,6 +38,8 @@ pub struct App {
     pub search_query: String,
     /// Last watcher error message, if any.
     pub last_error: Option<String>,
+    /// Worktree paths discovered at startup (empty if disabled).
+    pub worktree_paths: Vec<PathBuf>,
 }
 
 impl App {
@@ -80,13 +83,35 @@ impl App {
         };
 
         // --- Change tracker ---
-        let tracker = ChangeTracker::new(
+        let mut tracker = ChangeTracker::new(
             root_path.clone(),
             !cli.no_gitignore,
             cli.all,
             event_logger,
             stats_tracker,
         );
+
+        // --- Worktree discovery (on by default) ---
+        let worktree_paths: Vec<PathBuf> = if !cli.no_worktrees {
+            let worktrees = git::discover_worktrees(&root_path);
+            if !worktrees.is_empty() {
+                let paths: Vec<PathBuf> = worktrees.iter().map(|wt| wt.path.clone()).collect();
+                eprintln!(
+                    "Watching {} worktree{}:",
+                    worktrees.len(),
+                    if worktrees.len() == 1 { "" } else { "s" }
+                );
+                for wt in &worktrees {
+                    eprintln!("  {} [{}]", wt.path.display(), wt.branch);
+                }
+                tracker.set_worktree_paths(paths.clone());
+                paths
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
 
         let refresh_interval = Duration::from_secs_f64(cli.interval);
 
@@ -104,6 +129,7 @@ impl App {
             search_active: false,
             search_query: String::new(),
             last_error: None,
+            worktree_paths,
         })
     }
 
@@ -165,8 +191,14 @@ impl App {
             self.tracker.event_logger = Some(logger);
         }
 
-        // 2. Set up the file watcher.
-        let (_watcher, watch_rx) = FileWatcher::new(&self.root_path, self.refresh_interval)?;
+        // 2. Set up the file watcher (root + any external worktrees).
+        let mut watch_paths: Vec<&std::path::Path> = vec![&self.root_path];
+        for wt in &self.worktree_paths {
+            if !wt.starts_with(&self.root_path) {
+                watch_paths.push(wt.as_path());
+            }
+        }
+        let (_watcher, watch_rx) = FileWatcher::new_multi(&watch_paths, self.refresh_interval)?;
 
         // 3. Set up the terminal.
         enable_raw_mode()?;

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -26,6 +26,14 @@ pub struct ChangeTracker {
     /// Cache of LOC counts keyed by path.  Only recount when mtime or size
     /// changes compared to the cached values.
     loc_cache: HashMap<PathBuf, LocCacheEntry>,
+    /// Worktree directories to scan in addition to the root.  These are
+    /// absolute, canonical paths.  Worktrees that live under `root_path`
+    /// are force-included (bypassing gitignore); worktrees outside are
+    /// scanned separately and merged into the state.
+    worktree_paths: Vec<PathBuf>,
+    /// Pre-computed set of worktree canonical paths for O(1) lookups during
+    /// the gitignore check.
+    worktree_path_set: HashSet<PathBuf>,
 }
 
 impl ChangeTracker {
@@ -57,7 +65,21 @@ impl ChangeTracker {
             event_logger,
             stats_tracker,
             loc_cache: HashMap::new(),
+            worktree_paths: Vec::new(),
+            worktree_path_set: HashSet::new(),
         }
+    }
+
+    /// Register worktree directories to watch.  Paths should be absolute and
+    /// canonical.
+    pub fn set_worktree_paths(&mut self, paths: Vec<PathBuf>) {
+        self.worktree_path_set = paths.iter().cloned().collect();
+        self.worktree_paths = paths;
+    }
+
+    /// Returns `true` if `path` falls under any registered worktree directory.
+    fn is_inside_worktree(&self, path: &Path) -> bool {
+        self.worktree_paths.iter().any(|wt| path.starts_with(wt))
     }
 
     // ------------------------------------------------------------------
@@ -157,8 +179,9 @@ impl ChangeTracker {
                 continue;
             }
 
-            // Skip gitignored paths.
-            if self.use_gitignore {
+            // Skip gitignored paths — but never skip worktree directories or
+            // anything inside them.
+            if self.use_gitignore && !self.is_inside_worktree(&path) {
                 if let Some(ref parser) = self.gitignore_parser {
                     if parser.is_ignored(&path) {
                         continue;
@@ -217,6 +240,111 @@ impl ChangeTracker {
                         loc: 0,
                     },
                 );
+            }
+        }
+
+        // Scan external worktrees (those not under root_path) and merge
+        // their entries into the state.  Their paths are stored as absolute
+        // paths so the renderer can display them.
+        for wt_path in &self.worktree_paths {
+            if wt_path.starts_with(root_path) {
+                // Already covered by the main walk above.
+                continue;
+            }
+
+            let wt_walker = WalkDir::new(wt_path)
+                .follow_links(false)
+                .into_iter()
+                .filter_map(|e| e.ok());
+
+            // Add the worktree root directory itself.
+            if let Ok(meta) = wt_path.metadata() {
+                let mtime = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs_f64())
+                    .unwrap_or(0.0);
+                state.insert(
+                    wt_path.clone(),
+                    FileInfo {
+                        size: 0,
+                        modified: mtime,
+                        is_dir: true,
+                        loc: 0,
+                    },
+                );
+            }
+
+            for entry in wt_walker {
+                let path = entry.path().to_path_buf();
+                if path == *wt_path {
+                    continue;
+                }
+                if entry.path_is_symlink() {
+                    continue;
+                }
+                // Skip hidden paths inside worktrees too (unless --all).
+                if !self.show_hidden {
+                    let rel = path.strip_prefix(wt_path).unwrap_or(&path);
+                    let hidden = rel
+                        .components()
+                        .any(|c| c.as_os_str().to_str().is_some_and(|s| s.starts_with('.')));
+                    if hidden {
+                        continue;
+                    }
+                }
+
+                let meta = match entry.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+
+                let mtime = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs_f64())
+                    .unwrap_or(0.0);
+
+                if meta.is_file() {
+                    let size = meta.len();
+                    let loc = if let Some(&(cached_mtime, cached_size, cached_loc)) =
+                        self.loc_cache.get(&path)
+                    {
+                        if cached_mtime == mtime && cached_size == size {
+                            cached_loc
+                        } else {
+                            let new_loc = get_loc(&path);
+                            self.loc_cache.insert(path.clone(), (mtime, size, new_loc));
+                            new_loc
+                        }
+                    } else {
+                        let new_loc = get_loc(&path);
+                        self.loc_cache.insert(path.clone(), (mtime, size, new_loc));
+                        new_loc
+                    };
+
+                    state.insert(
+                        path,
+                        FileInfo {
+                            size,
+                            modified: mtime,
+                            is_dir: false,
+                            loc,
+                        },
+                    );
+                } else if meta.is_dir() {
+                    state.insert(
+                        path,
+                        FileInfo {
+                            size: 0,
+                            modified: mtime,
+                            is_dir: true,
+                            loc: 0,
+                        },
+                    );
+                }
             }
         }
 

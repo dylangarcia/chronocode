@@ -75,4 +75,10 @@ pub struct Cli {
     /// (e.g. abc123..def456), or a range to HEAD (e.g. abc123..)
     #[arg(long)]
     pub git: Option<String>,
+
+    /// Disable watching git worktrees. By default, chronocode discovers
+    /// worktrees via `git worktree list` and records changes in all of them.
+    /// Worktree paths are always included even if they would be gitignored.
+    #[arg(long = "no-worktrees")]
+    pub no_worktrees: bool,
 }

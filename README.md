@@ -52,6 +52,7 @@ Share this recording:
 - **Web replay viewer** - timeline scrubbing, content preview, diff view, LOC counts
 - **Shareable recordings** - compress a recording and send it as a single command
 - **Gitignore support** - respects `.gitignore` by default
+- **Worktree support** - automatically discovers and watches git worktrees (great for agentic workflows)
 - **Search/filter** - press `/` to search files by name
 - **Scrolling** - `j/k`, `g/G`, `PageUp/Down`, `Ctrl+d/u` with position indicator
 - **Collapsible folders** in the web viewer
@@ -138,6 +139,20 @@ chronocode --git abc123..
 
 The recording is saved to `recordings/` and the viewer opens automatically.
 
+## Worktrees
+
+Chronocode automatically discovers and watches git worktrees. This is especially useful for agentic coding workflows where tools like Claude Code spawn worktrees to work in parallel.
+
+When you run `chronocode` inside a git repository, it runs `git worktree list` and watches all worktrees alongside the main directory. Worktree paths are **always** included in the recording, even if they would normally be excluded by `.gitignore` rules (a common setup when the worktrees parent directory is gitignored).
+
+```bash
+# Worktrees are watched by default — just run chronocode
+chronocode
+
+# Disable worktree watching
+chronocode --no-worktrees
+```
+
 ## Options
 
 ```
@@ -163,6 +178,7 @@ Options:
       --share <FILE>              Generate a shareable command from a recording
       --load <DATA>               Load a shared recording and open the viewer
       --git <SPEC>                Generate a recording from git commits
+      --no-worktrees              Disable watching git worktrees
   -V, --version                   Print version
   -h, --help                      Print help
 ```

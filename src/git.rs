@@ -1,11 +1,12 @@
-//! Generate a ChronoCode recording from git commit history.
+//! Generate a ChronoCode recording from git commit history and discover
+//! git worktrees.
 //!
 //! Supports:
 //! - Single commit: `--git abc123` (diff from parent to that commit)
 //! - Range: `--git abc123..def456` (all commits from abc123 to def456)
 //! - Range to HEAD: `--git abc123..` (all commits from abc123 to HEAD)
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
@@ -373,4 +374,135 @@ fn count_lines_at_rev(path: &str, rev: &str, repo_path: &Path) -> usize {
         Ok(out) if out.status.success() => out.stdout.iter().filter(|&&b| b == b'\n').count(),
         _ => 0,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Worktree discovery
+// ---------------------------------------------------------------------------
+
+/// Information about a single git worktree.
+#[derive(Debug, Clone)]
+pub struct WorktreeInfo {
+    /// Absolute path to the worktree's working directory.
+    pub path: PathBuf,
+    /// The HEAD commit hash.
+    #[allow(dead_code)]
+    pub head: String,
+    /// The branch name, or "(detached)" / "(bare)".
+    pub branch: String,
+}
+
+/// Discover all git worktrees for the repository that contains `repo_path`.
+///
+/// Returns worktree paths **other than** the main worktree (i.e. the one
+/// at `repo_path` or its git root).  If `repo_path` is not inside a git
+/// repository, or if `git worktree list` fails, returns an empty list and
+/// prints a warning to stderr.
+pub fn discover_worktrees(repo_path: &Path) -> Vec<WorktreeInfo> {
+    let output = match Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(repo_path)
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("Warning: failed to run `git worktree list`: {e}");
+            return Vec::new();
+        }
+    };
+
+    if !output.status.success() {
+        eprintln!(
+            "Warning: `git worktree list` failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+        return Vec::new();
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_worktree_porcelain(&stdout, repo_path)
+}
+
+/// Parse the porcelain output of `git worktree list --porcelain`.
+///
+/// The format is blocks separated by blank lines:
+/// ```text
+/// worktree /abs/path
+/// HEAD <hash>
+/// branch refs/heads/<name>
+///
+/// worktree /abs/path2
+/// HEAD <hash>
+/// branch refs/heads/<name>
+/// ```
+///
+/// Bare worktrees have `bare` instead of `branch`.
+/// Detached worktrees have `detached` instead of `branch`.
+fn parse_worktree_porcelain(output: &str, repo_path: &Path) -> Vec<WorktreeInfo> {
+    // Resolve the canonical repo_path so we can compare against it.
+    let canonical_repo = repo_path
+        .canonicalize()
+        .unwrap_or_else(|_| repo_path.to_path_buf());
+
+    let mut worktrees = Vec::new();
+    let mut current_path: Option<PathBuf> = None;
+    let mut current_head = String::new();
+    let mut current_branch = String::new();
+    let mut is_bare = false;
+
+    for line in output.lines() {
+        if line.is_empty() {
+            // End of a block — flush current worktree if we have one.
+            if let Some(path) = current_path.take() {
+                let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+                // Skip the main worktree (the one we're already watching).
+                if canonical != canonical_repo && !is_bare {
+                    worktrees.push(WorktreeInfo {
+                        path: canonical,
+                        head: std::mem::take(&mut current_head),
+                        branch: if current_branch.is_empty() {
+                            "(detached)".to_string()
+                        } else {
+                            std::mem::take(&mut current_branch)
+                        },
+                    });
+                }
+            }
+            current_head.clear();
+            current_branch.clear();
+            is_bare = false;
+            continue;
+        }
+
+        if let Some(rest) = line.strip_prefix("worktree ") {
+            current_path = Some(PathBuf::from(rest));
+        } else if let Some(rest) = line.strip_prefix("HEAD ") {
+            current_head = rest.to_string();
+        } else if let Some(rest) = line.strip_prefix("branch ") {
+            // Strip the refs/heads/ prefix if present.
+            current_branch = rest.strip_prefix("refs/heads/").unwrap_or(rest).to_string();
+        } else if line == "bare" {
+            is_bare = true;
+        } else if line == "detached" {
+            current_branch.clear();
+        }
+    }
+
+    // Flush the last block (porcelain output may not end with a blank line).
+    if let Some(path) = current_path.take() {
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+        if canonical != canonical_repo && !is_bare {
+            worktrees.push(WorktreeInfo {
+                path: canonical,
+                head: current_head,
+                branch: if current_branch.is_empty() {
+                    "(detached)".to_string()
+                } else {
+                    current_branch
+                },
+            });
+        }
+    }
+
+    worktrees
 }
