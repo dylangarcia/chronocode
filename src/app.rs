@@ -183,8 +183,9 @@ impl App {
         println!("Opening viewer at http://127.0.0.1:{} ...", port);
         open::that(&url)?;
 
-        println!("Press Enter to stop the server.");
-        let _ = std::io::stdin().read_line(&mut String::new());
+        // Give the browser time to load the page and all assets,
+        // then tear down the server. Once loaded, the page is self-contained.
+        std::thread::sleep(Duration::from_secs(3));
         let _ = server.kill();
         let _ = std::fs::remove_dir_all(&tmp_dir);
 

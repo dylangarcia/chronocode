@@ -83,8 +83,9 @@ fn handle_viewer() -> anyhow::Result<()> {
     println!("Viewer running at {}", url);
     open::that(&url)?;
 
-    println!("Press Enter to stop the server.");
-    let _ = std::io::stdin().read_line(&mut String::new());
+    // Give the browser time to load the page and all assets,
+    // then tear down the server. Once loaded, the page is self-contained.
+    std::thread::sleep(Duration::from_secs(3));
     let _ = server.kill();
     let _ = std::fs::remove_dir_all(&tmp_dir);
 
