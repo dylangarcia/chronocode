@@ -2,6 +2,11 @@
 
 Record and replay file system changes in real-time. A TUI for watching AI agents (or yourself) build projects.
 
+## Demo
+
+[Demo](https://github.com/user-attachments/assets/902c33b5-9f23-4de2-8195-5ddefc5ac80b)
+
+
 ## Install
 
 ```bash
