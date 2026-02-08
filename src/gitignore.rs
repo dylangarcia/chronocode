@@ -7,17 +7,14 @@ use globset::{Glob, GlobMatcher};
 
 /// Parsed representation of a single gitignore rule.
 struct Rule {
-    /// The original pattern string (after stripping negation prefix and trailing slash).
-    _pattern: String,
     /// Whether this rule is a negation (line started with `!`).
     is_negation: bool,
     /// Whether the original pattern had a trailing `/` (directory-only match).
     dir_only: bool,
-    /// Whether the pattern is anchored (contains `/` so it must match from the
-    /// .gitignore's directory root rather than any path component).
-    _anchored: bool,
-    /// Compiled glob matcher.
+    /// Compiled glob matcher for direct matches.
     matcher: GlobMatcher,
+    /// Pre-compiled glob matcher for `pattern/**` (child/directory-content matches).
+    child_matcher: GlobMatcher,
 }
 
 /// A gitignore parser that loads every `.gitignore` file found under a root
@@ -32,15 +29,24 @@ pub struct GitignoreParser {
 }
 
 impl GitignoreParser {
-    /// Create a new parser rooted at `root_path`.  All `.gitignore` files under
-    /// that directory are discovered and parsed immediately.
+    /// Create a new parser rooted at `root_path`.
+    ///
+    /// Only loads the root-level `.gitignore` eagerly.  Nested `.gitignore`
+    /// files are loaded on demand via [`load_gitignore_at`] as the scanner
+    /// discovers them during the directory walk.
     pub fn new(root_path: &Path) -> Self {
         let mut parser = Self {
             root_path: root_path.to_path_buf(),
             patterns: HashMap::new(),
             rules: HashMap::new(),
         };
-        parser.load_gitignores();
+        // Eagerly load only the root .gitignore so top-level ignores
+        // (e.g. `node_modules/`, `target/`) take effect immediately,
+        // allowing the scanner to skip those subtrees entirely.
+        let root_gitignore = root_path.join(".gitignore");
+        if root_gitignore.is_file() {
+            parser.load_gitignore_at(&root_gitignore);
+        }
         parser
     }
 
@@ -48,31 +54,30 @@ impl GitignoreParser {
     // Loading
     // ------------------------------------------------------------------
 
-    /// Recursively walk `root_path` and parse every `.gitignore` file found.
-    fn load_gitignores(&mut self) {
-        let walker = walkdir::WalkDir::new(&self.root_path)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok());
-
-        for entry in walker {
-            if entry.file_type().is_file() && entry.file_name() == ".gitignore" {
-                let gitignore_path = entry.path().to_path_buf();
-                let dir = gitignore_path
-                    .parent()
-                    .unwrap_or(&self.root_path)
-                    .to_path_buf();
-
-                let raw_patterns = Self::parse_gitignore(&gitignore_path);
-                let compiled = raw_patterns
-                    .iter()
-                    .filter_map(|(pat, neg)| Self::compile_rule(pat, *neg))
-                    .collect();
-
-                self.patterns.insert(dir.clone(), raw_patterns);
-                self.rules.insert(dir, compiled);
-            }
+    /// Load and compile a single `.gitignore` file.  Called by the scanner
+    /// when it encounters a `.gitignore` during the directory walk.
+    pub fn load_gitignore_at(&mut self, gitignore_path: &Path) {
+        if !gitignore_path.is_file() {
+            return;
         }
+        let dir = gitignore_path
+            .parent()
+            .unwrap_or(&self.root_path)
+            .to_path_buf();
+
+        // Don't re-parse if we already have this directory's rules.
+        if self.rules.contains_key(&dir) {
+            return;
+        }
+
+        let raw_patterns = Self::parse_gitignore(gitignore_path);
+        let compiled = raw_patterns
+            .iter()
+            .filter_map(|(pat, neg)| Self::compile_rule(pat, *neg))
+            .collect();
+
+        self.patterns.insert(dir.clone(), raw_patterns);
+        self.rules.insert(dir, compiled);
     }
 
     // ------------------------------------------------------------------
@@ -125,6 +130,9 @@ impl GitignoreParser {
     // ------------------------------------------------------------------
 
     /// Turn a raw `(pattern, is_negation)` pair into a compiled [`Rule`].
+    ///
+    /// Pre-compiles both the direct matcher and the `pattern/**` child matcher
+    /// so no glob compilation is needed at query time.
     fn compile_rule(pattern: &str, is_negation: bool) -> Option<Rule> {
         let mut pat = pattern.to_string();
 
@@ -145,30 +153,26 @@ impl GitignoreParser {
         // leading one) *or* had a leading `/`.
         let anchored = had_leading_slash || pat.contains('/');
 
-        // Build the glob expression.
+        // Build the glob expressions.
         //
         // * Anchored patterns are matched against the full relative path, so we
         //   use the pattern as-is.
         // * Un-anchored patterns can match in any sub-directory, so we prepend
         //   `**/`.
-        let glob_expr = if anchored {
-            // If the user wrote something like `build/` we want it to match
-            // `build` **and** anything below it.  The glob `build` alone would
-            // only match the directory entry itself, so we also try
-            // `build/**`.  We handle this at match-time by checking both.
-            pat.clone()
+        let (glob_expr, child_glob_expr) = if anchored {
+            (pat.clone(), format!("{pat}/**"))
         } else {
-            format!("**/{pat}")
+            (format!("**/{pat}"), format!("**/{pat}/**"))
         };
 
         let matcher = Glob::new(&glob_expr).ok()?.compile_matcher();
+        let child_matcher = Glob::new(&child_glob_expr).ok()?.compile_matcher();
 
         Some(Rule {
-            _pattern: pattern.to_string(),
             is_negation,
             dir_only,
-            _anchored: anchored,
             matcher,
+            child_matcher,
         })
     }
 
@@ -236,11 +240,14 @@ impl GitignoreParser {
     /// Returns `true` if `path` should be ignored according to all applicable
     /// `.gitignore` rules.
     ///
+    /// `is_dir` indicates whether the path is a directory (avoids a stat syscall;
+    /// the caller typically already knows this from `walkdir::DirEntry`).
+    ///
     /// The method walks from the repository root down towards `path`, applying
     /// each intermediate `.gitignore` in order.  Within a single `.gitignore`,
     /// later rules override earlier ones, and negation rules (`!pattern`) can
     /// un-ignore a previously ignored path.
-    pub fn is_ignored(&self, path: &Path) -> bool {
+    pub fn is_ignored(&self, path: &Path, is_dir: bool) -> bool {
         // Build a canonical relative path (forward-slash separated) so that
         // glob matching works consistently across platforms.
         let rel = match path.strip_prefix(&self.root_path) {
@@ -248,17 +255,19 @@ impl GitignoreParser {
             Err(_) => return false,
         };
 
-        let rel_str = rel
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy().to_string())
-            .collect::<Vec<_>>()
-            .join("/");
+        // Build the relative path string without intermediate allocations by
+        // writing directly into a single String.
+        let mut rel_str = String::new();
+        for (i, component) in rel.components().enumerate() {
+            if i > 0 {
+                rel_str.push('/');
+            }
+            rel_str.push_str(&component.as_os_str().to_string_lossy());
+        }
 
         if rel_str.is_empty() {
             return false;
         }
-
-        let is_dir = path.is_dir();
 
         // Collect all applicable .gitignore directories.  These are every
         // ancestor of `path` (inclusive) that has a .gitignore, sorted from the
@@ -270,7 +279,7 @@ impl GitignoreParser {
             .filter(|dir| path.starts_with(dir) || *dir == &self.root_path)
             .collect();
 
-        applicable_dirs.sort();
+        applicable_dirs.sort_unstable();
 
         let mut ignored = false;
 
@@ -286,41 +295,33 @@ impl GitignoreParser {
                 Err(_) => continue,
             };
 
-            let local_rel_str = local_rel
-                .components()
-                .map(|c| c.as_os_str().to_string_lossy().to_string())
-                .collect::<Vec<_>>()
-                .join("/");
+            let mut local_rel_str = String::new();
+            for (i, component) in local_rel.components().enumerate() {
+                if i > 0 {
+                    local_rel_str.push('/');
+                }
+                local_rel_str.push_str(&component.as_os_str().to_string_lossy());
+            }
 
             if local_rel_str.is_empty() {
                 continue;
             }
 
             for rule in rules {
-                // For anchored patterns, match against the path relative to the
-                // .gitignore's own directory.  For un-anchored patterns, the
-                // glob already has a leading `**/` so either relative path will
-                // work; we use the local one for consistency.
                 let target = &local_rel_str;
 
                 // Check direct match.
                 let direct_match = rule.matcher.is_match(target);
 
-                // Check `pattern/**` to catch files *inside* an ignored
-                // directory (e.g. `build/` should ignore `build/output/a.bin`).
-                let child_match = {
-                    let dir_pattern = format!("{}/**", rule.matcher.glob().glob());
-                    Glob::new(&dir_pattern)
-                        .map(|g| g.compile_matcher().is_match(target))
-                        .unwrap_or(false)
-                };
+                // Check pre-compiled `pattern/**` to catch files *inside* an
+                // ignored directory (e.g. `build/` should ignore
+                // `build/output/a.bin`).
+                let child_match = rule.child_matcher.is_match(target);
 
                 // `dir_only` rules (trailing `/`) only match directories
                 // directly, but they *do* match any file nested inside that
                 // directory via the child_match path.
                 let matched = if rule.dir_only && !is_dir {
-                    // For a non-directory path, a dir_only rule only applies
-                    // if the path is *inside* the matched directory.
                     child_match
                 } else {
                     direct_match || child_match
@@ -418,23 +419,25 @@ mod tests {
     #[test]
     fn test_is_ignored_basic() {
         let dir = setup_temp_dir();
-        let parser = GitignoreParser::new(&dir);
+        let mut parser = GitignoreParser::new(&dir);
+        // Manually load the nested .gitignore (in production the scanner does this).
+        parser.load_gitignore_at(&dir.join("src/.gitignore"));
 
         // build/ is ignored
-        assert!(parser.is_ignored(&dir.join("build")));
-        assert!(parser.is_ignored(&dir.join("build/output/result.bin")));
+        assert!(parser.is_ignored(&dir.join("build"), true));
+        assert!(parser.is_ignored(&dir.join("build/output/result.bin"), false));
 
         // *.log is ignored
-        assert!(parser.is_ignored(&dir.join("logs/debug.log")));
+        assert!(parser.is_ignored(&dir.join("logs/debug.log"), false));
 
         // !important.log negates the *.log rule
-        assert!(!parser.is_ignored(&dir.join("logs/important.log")));
+        assert!(!parser.is_ignored(&dir.join("logs/important.log"), false));
 
         // Normal source files are not ignored
-        assert!(!parser.is_ignored(&dir.join("src/main.rs")));
+        assert!(!parser.is_ignored(&dir.join("src/main.rs"), false));
 
         // .tmp files inside src/ are ignored by nested .gitignore
-        assert!(parser.is_ignored(&dir.join("src/temp.tmp")));
+        assert!(parser.is_ignored(&dir.join("src/temp.tmp"), false));
 
         teardown(&dir);
     }

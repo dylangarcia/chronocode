@@ -34,6 +34,9 @@ pub struct ChangeTracker {
     /// Pre-computed set of worktree canonical paths for O(1) lookups during
     /// the gitignore check.
     worktree_path_set: HashSet<PathBuf>,
+    /// Whether the initial scan has completed.  LOC counting is deferred
+    /// until after the first scan to avoid reading every file at startup.
+    initial_scan_done: bool,
 }
 
 impl ChangeTracker {
@@ -67,6 +70,7 @@ impl ChangeTracker {
             loc_cache: HashMap::new(),
             worktree_paths: Vec::new(),
             worktree_path_set: HashSet::new(),
+            initial_scan_done: false,
         }
     }
 
@@ -79,7 +83,15 @@ impl ChangeTracker {
 
     /// Returns `true` if `path` falls under any registered worktree directory.
     fn is_inside_worktree(&self, path: &Path) -> bool {
-        self.worktree_paths.iter().any(|wt| path.starts_with(wt))
+        // Check the path itself and each ancestor against the set.
+        let mut current = Some(path);
+        while let Some(p) = current {
+            if self.worktree_path_set.contains(p) {
+                return true;
+            }
+            current = p.parent();
+        }
+        false
     }
 
     // ------------------------------------------------------------------
@@ -151,12 +163,14 @@ impl ChangeTracker {
             );
         }
 
-        let walker = WalkDir::new(root_path)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok());
+        let mut walker = WalkDir::new(root_path).follow_links(false).into_iter();
 
-        for entry in walker {
+        while let Some(entry_result) = walker.next() {
+            let entry = match entry_result {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
             let path = entry.path().to_path_buf();
 
             // Skip the root itself (already added above).
@@ -169,21 +183,45 @@ impl ChangeTracker {
                 continue;
             }
 
+            let entry_is_dir = entry.file_type().is_dir();
+
             // Skip hidden paths unless configured to show them.
+            // For directories, skip the entire subtree.
             if !self.show_hidden && self.is_hidden_path(&path) {
+                if entry_is_dir {
+                    walker.skip_current_dir();
+                }
                 continue;
             }
 
-            // Skip the recordings directory.
+            // Skip the recordings directory and its entire subtree.
             if self.is_recordings_path(&path) {
+                if entry_is_dir {
+                    walker.skip_current_dir();
+                }
                 continue;
+            }
+
+            // Incrementally load nested .gitignore files as we discover them
+            // during the walk, so their rules apply to deeper entries.
+            if self.use_gitignore
+                && entry.file_type().is_file()
+                && entry.file_name() == ".gitignore"
+            {
+                if let Some(ref mut parser) = self.gitignore_parser {
+                    parser.load_gitignore_at(&path);
+                }
             }
 
             // Skip gitignored paths — but never skip worktree directories or
-            // anything inside them.
+            // anything inside them.  For ignored directories, skip the entire
+            // subtree to avoid descending into e.g. node_modules/.
             if self.use_gitignore && !self.is_inside_worktree(&path) {
                 if let Some(ref parser) = self.gitignore_parser {
-                    if parser.is_ignored(&path) {
+                    if parser.is_ignored(&path, entry_is_dir) {
+                        if entry_is_dir {
+                            walker.skip_current_dir();
+                        }
                         continue;
                     }
                 }
@@ -204,8 +242,12 @@ impl ChangeTracker {
             if meta.is_file() {
                 let size = meta.len();
 
-                // Use cached LOC count if mtime and size haven't changed.
-                let loc = if let Some(&(cached_mtime, cached_size, cached_loc)) =
+                // On the initial scan, defer LOC counting to avoid reading
+                // every file.  On subsequent scans, use the cache and only
+                // recount when mtime/size changes.
+                let loc = if !self.initial_scan_done {
+                    0
+                } else if let Some(&(cached_mtime, cached_size, cached_loc)) =
                     self.loc_cache.get(&path)
                 {
                     if cached_mtime == mtime && cached_size == size {
@@ -309,7 +351,9 @@ impl ChangeTracker {
 
                 if meta.is_file() {
                     let size = meta.len();
-                    let loc = if let Some(&(cached_mtime, cached_size, cached_loc)) =
+                    let loc = if !self.initial_scan_done {
+                        0
+                    } else if let Some(&(cached_mtime, cached_size, cached_loc)) =
                         self.loc_cache.get(&path)
                     {
                         if cached_mtime == mtime && cached_size == size {
@@ -433,6 +477,12 @@ impl ChangeTracker {
         // Evict deleted paths from the LOC cache.
         for path in &deleted {
             self.loc_cache.remove(path);
+        }
+
+        // After the first scan completes, enable LOC counting for subsequent
+        // scans so only changed files are read.
+        if !self.initial_scan_done {
+            self.initial_scan_done = true;
         }
     }
 }
