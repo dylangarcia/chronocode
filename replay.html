@@ -1694,15 +1694,25 @@
                     }
                     
                     const name = parts[parts.length - 1];
-                    current.children.set(name, {
-                        name: name,
-                        children: new Map(),
-                        isDir: info.is_dir,
-                        path: path,
-                        size: info.size,
-                        status: info.status,
-                        content: info.content
-                    });
+                    const existing = current.children.get(name);
+                    if (existing) {
+                        // Merge: update properties but preserve existing children.
+                        existing.isDir = info.is_dir;
+                        existing.path = path;
+                        existing.size = info.size;
+                        existing.status = info.status;
+                        existing.content = info.content;
+                    } else {
+                        current.children.set(name, {
+                            name: name,
+                            children: new Map(),
+                            isDir: info.is_dir,
+                            path: path,
+                            size: info.size,
+                            status: info.status,
+                            content: info.content
+                        });
+                    }
                 }
                 
                 return root;
