@@ -39,6 +39,10 @@ pub struct Cli {
     #[arg(long = "no-record")]
     pub no_record: bool,
 
+    /// Don't open the viewer automatically after a session
+    #[arg(long = "no-open")]
+    pub no_open: bool,
+
     /// Record to a specific file (default: auto-generated in recordings/)
     #[arg(short = 'r', long = "record")]
     pub record: Option<String>,

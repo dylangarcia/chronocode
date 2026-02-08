@@ -18,12 +18,16 @@ use crate::scanner::ChangeTracker;
 use crate::statistics::StatisticsTracker;
 use crate::watcher::{FileWatcher, WatchEvent};
 
+/// The replay viewer HTML, embedded into the binary at compile time.
+const REPLAY_HTML: &str = include_str!("../replay.html");
+
 /// Main application state and run loop.
 pub struct App {
     pub root_path: PathBuf,
     pub tracker: ChangeTracker,
     pub show_stats: bool,
     pub is_recording: bool,
+    pub auto_open_viewer: bool,
     pub max_depth: Option<usize>,
     pub max_files: Option<usize>,
     pub refresh_interval: Duration,
@@ -86,6 +90,7 @@ impl App {
             tracker,
             show_stats: !cli.no_stats,
             is_recording,
+            auto_open_viewer: !cli.no_open && !cli.no_record,
             max_depth: cli.max_depth,
             max_files: cli.max_files,
             refresh_interval,
@@ -93,11 +98,11 @@ impl App {
         })
     }
 
-    /// Generate a shareable URL from a recording file.
-    fn generate_share_url(&self, recording_path: &std::path::Path) -> Result<String> {
+    /// Compress a recording into a `#data=...` URL fragment.
+    fn compress_recording(&self, recording_path: &std::path::Path) -> Result<String> {
         use base64::engine::general_purpose::URL_SAFE_NO_PAD;
         use base64::Engine;
-        use flate2::write::DeflateEncoder;
+        use flate2::write::ZlibEncoder;
         use flate2::Compression;
         use std::io::Write;
 
@@ -122,27 +127,68 @@ impl App {
 
         let json = serde_json::to_string(&data)?;
 
-        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::best());
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
         encoder.write_all(json.as_bytes())?;
         let compressed = encoder.finish()?;
-        let encoded = URL_SAFE_NO_PAD.encode(&compressed);
+        Ok(URL_SAFE_NO_PAD.encode(&compressed))
+    }
 
-        // Find replay.html relative to the recording or CWD.
-        let replay_html = self.root_path.join("replay.html");
-        let base_url = if replay_html.exists() {
-            format!("file://{}", replay_html.display())
-        } else {
-            let cwd_replay = std::env::current_dir()
-                .unwrap_or_default()
-                .join("replay.html");
-            if cwd_replay.exists() {
-                format!("file://{}", cwd_replay.display())
-            } else {
-                "file:///path/to/replay.html".to_string()
-            }
+    /// Open the recording in the web viewer via a local HTTP server.
+    /// The HTML is embedded in the binary — no external files needed.
+    fn open_viewer(&self, recording_path: &std::path::Path) -> Result<()> {
+        use std::process::{Command, Stdio};
+
+        let encoded = self.compress_recording(recording_path)?;
+
+        // Write the embedded HTML to a temp directory.
+        let tmp_dir = std::env::temp_dir().join("chronocode-viewer");
+        std::fs::create_dir_all(&tmp_dir)?;
+        let html_path = tmp_dir.join("index.html");
+        std::fs::write(&html_path, REPLAY_HTML)?;
+
+        // Pick a free port.
+        let port = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+            listener.local_addr()?.port()
         };
 
-        Ok(format!("{}#data={}", base_url, encoded))
+        // Spawn a local server. Try python3 first, then npx serve.
+        let mut server = Command::new("python3")
+            .args([
+                "-m",
+                "http.server",
+                &port.to_string(),
+                "--bind",
+                "127.0.0.1",
+            ])
+            .current_dir(&tmp_dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .or_else(|_| {
+                Command::new("npx")
+                    .args(["serve", "-l", &port.to_string(), "-s", "."])
+                    .current_dir(&tmp_dir)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+            })
+            .map_err(|_| anyhow::anyhow!("Could not start a local server (need python3 or npx)"))?;
+
+        // Give the server a moment to bind.
+        std::thread::sleep(Duration::from_millis(300));
+
+        let url = format!("http://127.0.0.1:{}/#data={}", port, encoded);
+
+        println!("Opening viewer at http://127.0.0.1:{} ...", port);
+        open::that(&url)?;
+
+        println!("Press Enter to stop the server.");
+        let _ = std::io::stdin().read_line(&mut String::new());
+        let _ = server.kill();
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        Ok(())
     }
 
     /// Run the main TUI event loop.
@@ -237,27 +283,22 @@ impl App {
             );
         }
 
-        // Finalize recording and print location + shareable link.
+        // Finalize recording and open viewer.
         if let Some(ref logger) = self.tracker.event_logger {
             logger.finalize();
             let event_count = logger.events.len();
 
             if let Some(ref output_path) = logger.output_path {
-                println!();
                 println!(
                     "Recording saved: {} ({} events)",
                     output_path.display(),
                     event_count
                 );
 
-                // Generate a shareable viewer URL.
-                if let Ok(url) = self.generate_share_url(output_path) {
-                    // Print an OSC 8 clickable hyperlink for terminals that support it.
-                    println!();
-                    println!(
-                        "  Open recording: \x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
-                        url, url
-                    );
+                if self.auto_open_viewer {
+                    if let Err(e) = self.open_viewer(output_path) {
+                        eprintln!("Failed to open viewer: {}", e);
+                    }
                 }
             }
         }

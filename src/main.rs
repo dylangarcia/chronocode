@@ -41,31 +41,52 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn handle_viewer() -> anyhow::Result<()> {
-    // Look for replay.html next to the executable, then in common locations.
-    let exe_dir = std::env::current_exe()?
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .to_path_buf();
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
 
-    let candidate_paths = [
-        exe_dir.join("replay.html"),
-        exe_dir.join("../share/chronocode/replay.html"),
-        std::path::PathBuf::from("replay.html"),
-    ];
+    const REPLAY_HTML: &str = include_str!("../replay.html");
 
-    for candidate in &candidate_paths {
-        if candidate.exists() {
-            let dest = std::env::current_dir()?.join("chronocode-viewer.html");
-            std::fs::copy(candidate, &dest)?;
-            println!("Viewer copied to: {}", dest.display());
-            open::that(&dest)?;
-            return Ok(());
-        }
-    }
+    let tmp_dir = std::env::temp_dir().join("chronocode-viewer");
+    std::fs::create_dir_all(&tmp_dir)?;
+    std::fs::write(tmp_dir.join("index.html"), REPLAY_HTML)?;
 
-    println!("Opening web viewer...");
-    println!("Note: replay.html was not found next to the executable.");
-    println!("Place replay.html alongside the chronocode binary or in the current directory.");
+    let port = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        listener.local_addr()?.port()
+    };
+
+    let mut server = Command::new("python3")
+        .args([
+            "-m",
+            "http.server",
+            &port.to_string(),
+            "--bind",
+            "127.0.0.1",
+        ])
+        .current_dir(&tmp_dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .or_else(|_| {
+            Command::new("npx")
+                .args(["serve", "-l", &port.to_string(), "-s", "."])
+                .current_dir(&tmp_dir)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+        })
+        .map_err(|_| anyhow::anyhow!("Could not start a local server (need python3 or npx)"))?;
+
+    std::thread::sleep(Duration::from_millis(300));
+
+    let url = format!("http://127.0.0.1:{}/", port);
+    println!("Viewer running at {}", url);
+    open::that(&url)?;
+
+    println!("Press Enter to stop the server.");
+    let _ = std::io::stdin().read_line(&mut String::new());
+    let _ = server.kill();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
 
     Ok(())
 }
@@ -73,7 +94,7 @@ fn handle_viewer() -> anyhow::Result<()> {
 fn handle_share(cli: &cli::Cli, recording_file: &str) -> anyhow::Result<()> {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
-    use flate2::write::DeflateEncoder;
+    use flate2::write::ZlibEncoder;
     use flate2::Compression;
     use std::io::Write;
 
@@ -103,8 +124,8 @@ fn handle_share(cli: &cli::Cli, recording_file: &str) -> anyhow::Result<()> {
 
     let json = serde_json::to_string(&data)?;
 
-    // Compress with deflate
-    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::best());
+    // Compress with zlib (matches pako.deflate/inflate in the browser)
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
     encoder.write_all(json.as_bytes())?;
     let compressed = encoder.finish()?;
 
@@ -112,16 +133,9 @@ fn handle_share(cli: &cli::Cli, recording_file: &str) -> anyhow::Result<()> {
     let encoded = URL_SAFE_NO_PAD.encode(&compressed);
 
     // Build URL
-    let base_url = if let Some(ref base) = cli.share_base_url {
-        base.clone()
-    } else {
-        // Default to a local file URL
-        let replay_html = std::env::current_dir()?.join("replay.html");
-        if replay_html.exists() {
-            format!("file://{}", replay_html.display())
-        } else {
-            "https://your-host.com/replay.html".to_string()
-        }
+    let base_url = match cli.share_base_url {
+        Some(ref base) => base.clone(),
+        None => "https://your-host.com/replay.html".to_string(),
     };
 
     let url = format!("{}#data={}", base_url, encoded);
