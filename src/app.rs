@@ -454,7 +454,7 @@ impl App {
                 }
             }
 
-            if self.auto_open_viewer {
+            if self.auto_open_viewer && event_count > 0 {
                 if let Err(e) = self.open_viewer(&output_path) {
                     eprintln!("Failed to open viewer: {}", e);
                 }
