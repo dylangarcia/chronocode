@@ -252,6 +252,7 @@ fn handle_replay(cli: &cli::Cli, replay_file: &str) -> anyhow::Result<()> {
             .get("is_dir")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let loc = item.get("loc").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
         let full_path = root_path.join(path_str);
         current_state.insert(
             full_path.clone(),
@@ -260,7 +261,7 @@ fn handle_replay(cli: &cli::Cli, replay_file: &str) -> anyhow::Result<()> {
                 size,
                 modified: 0.0,
                 is_dir,
-                loc: 0,
+                loc,
             },
         );
     }
@@ -324,13 +325,14 @@ fn handle_replay(cli: &cli::Cli, replay_file: &str) -> anyhow::Result<()> {
                             size: ev.size,
                             modified: 0.0,
                             is_dir: ev.is_dir,
-                            loc: 0,
+                            loc: ev.loc,
                         },
                     );
                 }
                 state::EventType::Modified => {
                     if let Some(info) = current_state.get_mut(&full_path) {
                         info.size = ev.size;
+                        info.loc = ev.loc;
                     }
                 }
                 state::EventType::Deleted => {

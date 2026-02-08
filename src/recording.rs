@@ -72,6 +72,7 @@ impl EventLogger {
                 "path": self.to_relative_path(path),
                 "size": info.size,
                 "is_dir": info.is_dir,
+                "loc": info.loc,
             });
 
             // Capture content for text files when enabled
@@ -126,7 +127,14 @@ impl EventLogger {
     }
 
     /// Log a file system event and write to file immediately.
-    pub fn log_event(&mut self, event_type: EventType, path: &Path, size: u64, is_dir: bool) {
+    pub fn log_event(
+        &mut self,
+        event_type: EventType,
+        path: &Path,
+        size: u64,
+        is_dir: bool,
+        loc: usize,
+    ) {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("system time before UNIX epoch")
@@ -155,6 +163,7 @@ impl EventLogger {
             path: self.to_relative_path(path),
             size,
             is_dir,
+            loc,
             content,
         };
         self.events.push(event);

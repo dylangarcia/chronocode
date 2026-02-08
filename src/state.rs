@@ -58,6 +58,8 @@ pub struct FileEvent {
     pub size: u64,
     #[serde(default)]
     pub is_dir: bool,
+    #[serde(default)]
+    pub loc: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
 }

@@ -252,7 +252,7 @@ impl ChangeTracker {
         for path in &added {
             let info = &self.current_state[path];
             if let Some(ref mut logger) = self.event_logger {
-                logger.log_event(EventType::Created, path, info.size, info.is_dir);
+                logger.log_event(EventType::Created, path, info.size, info.is_dir, info.loc);
             }
             if let Some(ref mut tracker) = self.stats_tracker {
                 tracker.record_event("created", info.size, info.is_dir);
@@ -262,7 +262,7 @@ impl ChangeTracker {
         for path in &deleted {
             let info = &self.previous_state[path];
             if let Some(ref mut logger) = self.event_logger {
-                logger.log_event(EventType::Deleted, path, info.size, info.is_dir);
+                logger.log_event(EventType::Deleted, path, info.size, info.is_dir, info.loc);
             }
             if let Some(ref mut tracker) = self.stats_tracker {
                 tracker.record_event("deleted", info.size, info.is_dir);
@@ -272,7 +272,7 @@ impl ChangeTracker {
         for path in &modified {
             let info = &self.current_state[path];
             if let Some(ref mut logger) = self.event_logger {
-                logger.log_event(EventType::Modified, path, info.size, info.is_dir);
+                logger.log_event(EventType::Modified, path, info.size, info.is_dir, info.loc);
             }
             if let Some(ref mut tracker) = self.stats_tracker {
                 tracker.record_event("modified", info.size, info.is_dir);
