@@ -19,6 +19,125 @@ use crate::state::{
 use crate::statistics::{StatisticsTracker, Stats};
 
 // ---------------------------------------------------------------------------
+// Render cache
+// ---------------------------------------------------------------------------
+
+/// Pre-computed summary counters, updated only when state changes.
+pub struct SummaryData {
+    pub total_files: usize,
+    pub total_dirs: usize,
+    pub total_size: u64,
+    pub total_loc: usize,
+}
+
+/// Cached tree and derived data that is expensive to rebuild every frame.
+/// Reconstructed only when the underlying state changes.
+pub struct RenderCache {
+    /// The built tree (sorted, ready for rendering).
+    pub tree_nodes: Vec<TreeNode>,
+    /// Total displayable lines (including column header).
+    pub total_lines: u16,
+    /// Pre-computed summary counters.
+    pub summary: SummaryData,
+    /// The search query that was active when the filtered tree was built.
+    /// If the query changes, the cache is invalidated.
+    cached_search_query: String,
+    /// Filtered tree (computed when search is active).
+    filtered_nodes: Option<Vec<TreeNode>>,
+    filtered_total_lines: u16,
+    /// Generation counter of the state snapshot this cache was built from.
+    state_generation: u64,
+}
+
+impl RenderCache {
+    pub fn new() -> Self {
+        Self {
+            tree_nodes: Vec::new(),
+            total_lines: 0,
+            summary: SummaryData {
+                total_files: 0,
+                total_dirs: 0,
+                total_size: 0,
+                total_loc: 0,
+            },
+            cached_search_query: String::new(),
+            filtered_nodes: None,
+            filtered_total_lines: 0,
+            state_generation: 0,
+        }
+    }
+
+    /// Rebuild the cache from the current state.  Only call this when the
+    /// state generation has changed.
+    pub fn rebuild(
+        &mut self,
+        root_path: &Path,
+        state: &HashMap<PathBuf, FileInfo>,
+        max_depth: Option<usize>,
+        max_files: Option<usize>,
+        generation: u64,
+    ) {
+        self.tree_nodes = build_tree(root_path, state);
+        let content_lines = count_tree_lines(&self.tree_nodes, max_depth, max_files, 0);
+        self.total_lines = (content_lines + 1) as u16;
+
+        // Recompute summary counters.
+        let mut total_files: usize = 0;
+        let mut total_dirs: usize = 0;
+        let mut total_size: u64 = 0;
+        let mut total_loc: usize = 0;
+        for info in state.values() {
+            if info.is_dir {
+                total_dirs += 1;
+            } else {
+                total_files += 1;
+                total_size += info.size;
+                total_loc += info.loc;
+            }
+        }
+        self.summary = SummaryData {
+            total_files,
+            total_dirs,
+            total_size,
+            total_loc,
+        };
+
+        // Invalidate filtered cache.
+        self.filtered_nodes = None;
+        self.cached_search_query.clear();
+        self.filtered_total_lines = 0;
+        self.state_generation = generation;
+    }
+
+    /// Get the effective tree nodes and total line count, applying the search
+    /// filter if needed.  Caches the filtered result.
+    pub fn get_tree_and_lines(
+        &mut self,
+        search_query: &str,
+        max_depth: Option<usize>,
+        max_files: Option<usize>,
+    ) -> (&[TreeNode], u16) {
+        if search_query.is_empty() {
+            return (&self.tree_nodes, self.total_lines);
+        }
+
+        // Rebuild filtered tree if query changed.
+        if self.cached_search_query != search_query || self.filtered_nodes.is_none() {
+            let filtered = filter_tree(&self.tree_nodes, search_query);
+            let content_lines = count_tree_lines(&filtered, max_depth, max_files, 0);
+            self.filtered_total_lines = (content_lines + 1) as u16;
+            self.filtered_nodes = Some(filtered);
+            self.cached_search_query = search_query.to_string();
+        }
+
+        (
+            self.filtered_nodes.as_deref().unwrap(),
+            self.filtered_total_lines,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -522,66 +641,6 @@ fn render_header(frame: &mut Frame, area: Rect, root_path: &Path, is_recording: 
 // Summary line
 // ---------------------------------------------------------------------------
 
-/// Render a summary line showing total files, directories, size, LOC, and
-/// change counts.
-fn render_summary_line(state: &HashMap<PathBuf, FileInfo>, changes: &ChangeSet) -> Line<'static> {
-    let mut total_files: usize = 0;
-    let mut total_dirs: usize = 0;
-    let mut total_size: u64 = 0;
-    let mut total_loc: usize = 0;
-
-    for info in state.values() {
-        if info.is_dir {
-            total_dirs += 1;
-        } else {
-            total_files += 1;
-            total_size += info.size;
-            total_loc += info.loc;
-        }
-    }
-
-    let added = changes.added.len();
-    let modified = changes.modified.len();
-    let deleted = changes.deleted.len();
-
-    let mut spans: Vec<Span<'static>> = vec![
-        Span::styled(" Files: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(total_files.to_string(), Style::default().fg(Color::White)),
-        Span::styled("  Dirs: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(total_dirs.to_string(), Style::default().fg(Color::White)),
-        Span::styled("  Size: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(format_size(total_size), Style::default().fg(Color::Cyan)),
-        Span::styled("  LOC: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(format_loc(total_loc), Style::default().fg(Color::Cyan)),
-    ];
-
-    if added > 0 || modified > 0 || deleted > 0 {
-        spans.push(Span::styled("  | ", Style::default().fg(Color::DarkGray)));
-        if added > 0 {
-            spans.push(Span::styled(
-                format!("+{}", added),
-                Style::default().fg(Color::Green),
-            ));
-            spans.push(Span::raw(" "));
-        }
-        if modified > 0 {
-            spans.push(Span::styled(
-                format!("~{}", modified),
-                Style::default().fg(Color::Yellow),
-            ));
-            spans.push(Span::raw(" "));
-        }
-        if deleted > 0 {
-            spans.push(Span::styled(
-                format!("-{}", deleted),
-                Style::default().fg(Color::Red),
-            ));
-        }
-    }
-
-    Line::from(spans)
-}
-
 // ---------------------------------------------------------------------------
 // Stats dashboard
 // ---------------------------------------------------------------------------
@@ -901,6 +960,9 @@ fn tree_column_headers() -> Line<'static> {
 
 /// Top-level render function.  Call this from your main loop with all the data
 /// the renderer needs -- this avoids circular dependencies on an `App` struct.
+///
+/// The `cache` is updated lazily: the tree and summary are only rebuilt when
+/// `state_generation` changes, making idle frames essentially free.
 #[allow(clippy::too_many_arguments)]
 pub fn render_ui(
     frame: &mut Frame,
@@ -917,8 +979,15 @@ pub fn render_ui(
     search_query: &str,
     search_active: bool,
     last_error: Option<&str>,
+    cache: &mut RenderCache,
+    state_generation: u64,
 ) -> u16 {
     let size = frame.area();
+
+    // ----- Rebuild cache if state changed -----
+    if cache.state_generation != state_generation {
+        cache.rebuild(root_path, state, max_depth, max_files, state_generation);
+    }
 
     // ----- Determine layout constraints -----
 
@@ -944,22 +1013,13 @@ pub fn render_ui(
     // ----- Header -----
     render_header(frame, header_area, root_path, is_recording);
 
-    // ----- Summary line -----
-    let summary_line = render_summary_line(state, changes);
+    // ----- Summary line (from cached counters) -----
+    let summary_line = render_summary_line_cached(&cache.summary, changes);
     frame.render_widget(Paragraph::new(summary_line), summary_area);
 
-    // ----- Tree -----
-    let tree_nodes = build_tree(root_path, state);
-    let tree_nodes = if search_query.is_empty() {
-        tree_nodes
-    } else {
-        filter_tree(&tree_nodes, search_query)
-    };
-
-    // Count total lines cheaply (no Line/Span allocations) for the scroll
-    // indicator.  +1 for the column header row.
-    let content_lines = count_tree_lines(&tree_nodes, max_depth, max_files, 0);
-    let total_tree_lines = (content_lines + 1) as u16; // +1 for column headers
+    // ----- Tree (from cache, with optional search filter) -----
+    let (tree_nodes, total_tree_lines) =
+        cache.get_tree_and_lines(search_query, max_depth, max_files);
 
     // Virtual scrolling: only build Line objects for the visible viewport.
     let viewport_height = tree_area.height as usize;
@@ -984,7 +1044,7 @@ pub fn render_ui(
 
     let mut line_index: usize = 0;
     render_tree_lines(
-        &tree_nodes,
+        tree_nodes,
         " ",
         state,
         changes,
@@ -1023,6 +1083,62 @@ pub fn render_ui(
     );
 
     total_tree_lines
+}
+
+/// Render summary line from cached counters (avoids iterating all state values).
+fn render_summary_line_cached(summary: &SummaryData, changes: &ChangeSet) -> Line<'static> {
+    let added = changes.added.len();
+    let modified = changes.modified.len();
+    let deleted = changes.deleted.len();
+
+    let mut spans: Vec<Span<'static>> = vec![
+        Span::styled(" Files: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            summary.total_files.to_string(),
+            Style::default().fg(Color::White),
+        ),
+        Span::styled("  Dirs: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            summary.total_dirs.to_string(),
+            Style::default().fg(Color::White),
+        ),
+        Span::styled("  Size: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format_size(summary.total_size),
+            Style::default().fg(Color::Cyan),
+        ),
+        Span::styled("  LOC: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format_loc(summary.total_loc),
+            Style::default().fg(Color::Cyan),
+        ),
+    ];
+
+    if added > 0 || modified > 0 || deleted > 0 {
+        spans.push(Span::styled("  | ", Style::default().fg(Color::DarkGray)));
+        if added > 0 {
+            spans.push(Span::styled(
+                format!("+{}", added),
+                Style::default().fg(Color::Green),
+            ));
+            spans.push(Span::raw(" "));
+        }
+        if modified > 0 {
+            spans.push(Span::styled(
+                format!("~{}", modified),
+                Style::default().fg(Color::Yellow),
+            ));
+            spans.push(Span::raw(" "));
+        }
+        if deleted > 0 {
+            spans.push(Span::styled(
+                format!("-{}", deleted),
+                Style::default().fg(Color::Red),
+            ));
+        }
+    }
+
+    Line::from(spans)
 }
 
 // ---------------------------------------------------------------------------

@@ -46,6 +46,9 @@ pub struct ChangeTracker {
     /// Whether the initial scan has completed.  LOC counting is deferred
     /// until after the first scan to avoid reading every file at startup.
     initial_scan_done: bool,
+    /// Monotonically increasing counter bumped whenever `current_state`
+    /// changes.  Used by the render cache to detect when it needs to rebuild.
+    pub state_generation: u64,
 }
 
 impl ChangeTracker {
@@ -80,6 +83,7 @@ impl ChangeTracker {
             worktree_paths: Vec::new(),
             worktree_path_set: HashSet::new(),
             initial_scan_done: false,
+            state_generation: 0,
         }
     }
 
@@ -140,6 +144,7 @@ impl ChangeTracker {
         self.gitignore_parser = result.gitignore_parser;
         self.previous_state = std::mem::take(&mut self.current_state);
         self.current_state = result.state;
+        self.state_generation += 1;
         if !self.initial_scan_done {
             self.initial_scan_done = true;
         }
@@ -176,6 +181,7 @@ impl ChangeTracker {
         // Rotate states.
         self.previous_state = std::mem::take(&mut self.current_state);
         self.current_state = self.scan_directory(root_path);
+        self.state_generation += 1;
 
         // Compute change sets using key-set operations.
         let previous_keys: std::collections::HashSet<&PathBuf> =
@@ -203,13 +209,13 @@ impl ChangeTracker {
             .collect();
 
         self.changes = ChangeSet {
-            added: added.clone(),
-            modified: modified.clone(),
-            deleted: deleted.clone(),
+            added,
+            modified,
+            deleted,
         };
 
         // Forward events to logger and stats tracker.
-        for path in &added {
+        for path in &self.changes.added {
             let info = &self.current_state[path];
             let ext = path.extension().and_then(|e| e.to_str());
             if let Some(ref mut logger) = self.event_logger {
@@ -220,7 +226,7 @@ impl ChangeTracker {
             }
         }
 
-        for path in &deleted {
+        for path in &self.changes.deleted {
             let info = &self.previous_state[path];
             let ext = path.extension().and_then(|e| e.to_str());
             if let Some(ref mut logger) = self.event_logger {
@@ -231,7 +237,7 @@ impl ChangeTracker {
             }
         }
 
-        for path in &modified {
+        for path in &self.changes.modified {
             let info = &self.current_state[path];
             let ext = path.extension().and_then(|e| e.to_str());
             if let Some(ref mut logger) = self.event_logger {
@@ -243,7 +249,7 @@ impl ChangeTracker {
         }
 
         // Evict deleted paths from the LOC cache.
-        for path in &deleted {
+        for path in &self.changes.deleted {
             self.loc_cache.remove(path);
         }
 
@@ -293,6 +299,9 @@ fn path_is_recordings(path: &Path, root: &Path) -> bool {
 
 /// Returns `true` if `path` falls under any path in the worktree set.
 fn path_in_worktree(path: &Path, worktree_set: &HashSet<PathBuf>) -> bool {
+    if worktree_set.is_empty() {
+        return false;
+    }
     let mut current = Some(path);
     while let Some(p) = current {
         if worktree_set.contains(p) {

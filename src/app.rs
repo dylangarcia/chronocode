@@ -40,6 +40,8 @@ pub struct App {
     pub last_error: Option<String>,
     /// Worktree paths discovered at startup (empty if disabled).
     pub worktree_paths: Vec<PathBuf>,
+    /// Cached render state (tree, summary counters, filtered tree).
+    pub render_cache: renderer::RenderCache,
 }
 
 impl App {
@@ -130,6 +132,7 @@ impl App {
             search_query: String::new(),
             last_error: None,
             worktree_paths,
+            render_cache: renderer::RenderCache::new(),
         })
     }
 
@@ -266,23 +269,38 @@ impl App {
             } else {
                 self.last_error.clone()
             };
+            // Extract stats before the draw closure to avoid borrowing all
+            // of `self` mutably (stats_tracker needs &mut, but other tracker
+            // fields only need &).
+            let stats = self.tracker.stats_tracker.as_mut().map(|st| st.get_stats());
+            let state_generation = self.tracker.state_generation;
+            let root_path = &self.root_path;
+            let current_state = &self.tracker.current_state;
+            let changes = &self.tracker.changes;
+            let previous_state = &self.tracker.previous_state;
+            let is_recording = self.is_recording;
+            let max_depth = self.max_depth;
+            let max_files = self.max_files;
+            let show_stats = self.show_stats;
+            let cache = &mut self.render_cache;
             terminal.draw(|frame| {
-                let stats = self.tracker.stats_tracker.as_ref().map(|st| st.get_stats());
                 total_lines_out = renderer::render_ui(
                     frame,
-                    &self.root_path,
-                    &self.tracker.current_state,
-                    &self.tracker.changes,
-                    &self.tracker.previous_state,
+                    root_path,
+                    current_state,
+                    changes,
+                    previous_state,
                     stats.as_ref(),
-                    self.is_recording,
-                    self.max_depth,
-                    self.max_files,
-                    self.show_stats,
+                    is_recording,
+                    max_depth,
+                    max_files,
+                    show_stats,
                     scroll_offset,
                     &search_query,
                     search_active,
                     last_error.as_deref(),
+                    cache,
+                    state_generation,
                 );
             })?;
             self.total_tree_lines = total_lines_out;
@@ -411,7 +429,7 @@ impl App {
         // Print session summary.
         println!();
 
-        if let Some(ref st) = self.tracker.stats_tracker {
+        if let Some(ref mut st) = self.tracker.stats_tracker {
             let stats = st.get_stats();
             println!("Session summary:");
             println!(

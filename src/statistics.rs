@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Clone)]
 pub struct Stats {
     pub session_duration: f64,
     pub total_created: u64,
@@ -34,6 +35,8 @@ pub struct StatisticsTracker {
     all_events: Vec<(f64, String)>,
     /// Running count of file extensions seen across created events.
     extension_counts: HashMap<String, usize>,
+    /// Cached stats, recomputed only when events are recorded.
+    cached_stats: Option<Stats>,
 }
 
 impl StatisticsTracker {
@@ -54,6 +57,7 @@ impl StatisticsTracker {
             events_per_minute: Vec::new(),
             all_events: Vec::new(),
             extension_counts: HashMap::new(),
+            cached_stats: None,
         }
     }
 
@@ -69,6 +73,7 @@ impl StatisticsTracker {
             .unwrap()
             .as_secs_f64();
 
+        self.cached_stats = None; // Invalidate cache.
         self.events_per_minute.push((now, event_type.to_string()));
         self.all_events.push((now, event_type.to_string()));
 
@@ -177,13 +182,24 @@ impl StatisticsTracker {
         exts
     }
 
-    pub fn get_stats(&self) -> Stats {
+    pub fn get_stats(&mut self) -> Stats {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs_f64();
 
-        Stats {
+        // Reuse cached expensive fields (activity_buckets, top_extensions)
+        // if no new events have been recorded since the last call.
+        let (activity_buckets, top_extensions) = if let Some(ref cached) = self.cached_stats {
+            (
+                cached.activity_buckets.clone(),
+                cached.top_extensions.clone(),
+            )
+        } else {
+            (self.get_activity_buckets(50), self.get_top_extensions(5))
+        };
+
+        let stats = Stats {
             session_duration: now - self.session_start,
             total_created: self.total_created,
             total_modified: self.total_modified,
@@ -193,9 +209,15 @@ impl StatisticsTracker {
             peak_files: self.peak_files,
             peak_dirs: self.peak_dirs,
             events_per_minute: self.events_per_minute.len(),
-            activity_buckets: self.get_activity_buckets(50),
-            top_extensions: self.get_top_extensions(5),
+            activity_buckets,
+            top_extensions,
+        };
+
+        if self.cached_stats.is_none() {
+            self.cached_stats = Some(stats.clone());
         }
+
+        stats
     }
 
     pub fn format_duration(seconds: f64) -> String {

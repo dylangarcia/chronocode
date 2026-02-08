@@ -258,6 +258,8 @@ fn handle_replay(cli: &cli::Cli, replay_file: &str) -> anyhow::Result<()> {
     let events = &logger.events;
     let mut event_index = 0;
     let replay_start = Instant::now();
+    let mut render_cache = renderer::RenderCache::new();
+    let mut replay_generation: u64 = 0;
 
     loop {
         // Draw current state.
@@ -277,6 +279,8 @@ fn handle_replay(cli: &cli::Cli, replay_file: &str) -> anyhow::Result<()> {
                 "",
                 false,
                 None,
+                &mut render_cache,
+                replay_generation,
             );
         })?;
 
@@ -322,6 +326,7 @@ fn handle_replay(cli: &cli::Cli, replay_file: &str) -> anyhow::Result<()> {
                 }
             }
             event_index += 1;
+            replay_generation += 1;
         }
 
         // End replay once all events have been applied.
