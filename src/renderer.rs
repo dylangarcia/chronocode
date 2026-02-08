@@ -11,6 +11,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
+use unicode_width::UnicodeWidthStr;
 
 use crate::state::{
     format_delta, format_loc, format_size, get_file_emoji, get_size_color, ChangeSet, FileInfo,
@@ -122,6 +123,11 @@ fn build_children(parent: &Path, state: &HashMap<PathBuf, FileInfo>) -> Vec<Tree
 // Tree line rendering
 // ---------------------------------------------------------------------------
 
+/// The total display width of the name portion (leading space + Name + Status
+/// columns from the header).  Tree rows pad their name+badge section to this
+/// width so that the Size column always starts at the same position.
+const NAME_COL_TOTAL: usize = 1 + NAME_WIDTH as usize + STATUS_WIDTH as usize;
+
 /// Recursively build styled `Line`s representing the file tree.
 ///
 /// # Arguments
@@ -188,15 +194,22 @@ pub fn render_tree_lines(
 
         let mut spans: Vec<Span<'static>> = Vec::new();
 
+        // Track the visual (display) width consumed so far.
+        let mut used_width: usize = 0;
+
         // 1. Prefix + connector
+        let prefix_str = format!("{}{}", prefix, connector);
+        used_width += UnicodeWidthStr::width(prefix_str.as_str());
         spans.push(Span::styled(
-            format!("{}{}", prefix, connector),
+            prefix_str,
             Style::default().fg(Color::DarkGray),
         ));
 
         // 2. Emoji
         let emoji = get_file_emoji(&node.name, node.is_dir);
-        spans.push(Span::raw(format!("{} ", emoji)));
+        let emoji_str = format!("{} ", emoji);
+        used_width += UnicodeWidthStr::width(emoji_str.as_str());
+        spans.push(Span::raw(emoji_str));
 
         // 3. Name -- colored by change status
         let (name_color, status_text) = if changes.added.contains(&node.path) {
@@ -215,6 +228,7 @@ pub fn render_tree_lines(
             Style::default().fg(name_color)
         };
 
+        used_width += UnicodeWidthStr::width(node.name.as_str());
         spans.push(Span::styled(node.name.clone(), name_style));
 
         // 4. Status badge
@@ -226,8 +240,10 @@ pub fn render_tree_lines(
                 _ => Color::Reset,
             };
             spans.push(Span::raw(" "));
+            let badge = format!("[{}]", status_text);
+            used_width += 1 + badge.len(); // space + badge (ASCII, so len == width)
             spans.push(Span::styled(
-                format!("[{}]", status_text),
+                badge,
                 Style::default()
                     .fg(Color::Black)
                     .bg(badge_color)
@@ -235,45 +251,50 @@ pub fn render_tree_lines(
             ));
         }
 
-        // For files (not dirs), show size, delta, LOC, LOC delta.
+        // 5. Pad the name portion to NAME_COL_TOTAL so data columns align.
+        let pad = if used_width < NAME_COL_TOTAL {
+            NAME_COL_TOTAL - used_width
+        } else {
+            1 // at least one space separator if the name is very long
+        };
+        spans.push(Span::raw(" ".repeat(pad)));
+
+        // For files (not dirs), show size, delta, LOC, LOC delta as
+        // fixed-width right-aligned columns.
         if !node.is_dir {
             if let Some(info) = state.get(&node.path) {
-                // 5. Size
+                // 6. Size (right-aligned, SIZE_WIDTH)
                 let size_str = format_size(info.size);
                 let size_color = color_from_name(get_size_color(info.size));
-                spans.push(Span::raw(" "));
-                spans.push(Span::styled(size_str, Style::default().fg(size_color)));
+                spans.push(Span::styled(
+                    format!("{:>width$}", size_str, width = SIZE_WIDTH as usize),
+                    Style::default().fg(size_color),
+                ));
 
-                // 6. Size delta
+                // 7. Size delta (right-aligned, DELTA_WIDTH)
                 let prev_size = previous_state.get(&node.path).map(|p| p.size).unwrap_or(0);
                 let size_delta = info.size as i64 - prev_size as i64;
                 let (delta_str, delta_color_name) = format_delta(size_delta, true);
-                if !delta_str.is_empty() {
-                    spans.push(Span::raw(" "));
-                    spans.push(Span::styled(
-                        delta_str,
-                        Style::default().fg(color_from_name(delta_color_name)),
-                    ));
-                }
+                spans.push(Span::styled(
+                    format!("{:>width$}", delta_str, width = DELTA_WIDTH as usize),
+                    Style::default().fg(color_from_name(delta_color_name)),
+                ));
 
-                // 7. LOC
+                // 8. LOC (right-aligned, LOC_WIDTH)
                 let loc_str = format_loc(info.loc);
-                if !loc_str.is_empty() {
-                    spans.push(Span::raw(" "));
-                    spans.push(Span::styled(loc_str, Style::default().fg(Color::DarkGray)));
-                }
+                spans.push(Span::styled(
+                    format!("{:>width$}", loc_str, width = LOC_WIDTH as usize),
+                    Style::default().fg(Color::DarkGray),
+                ));
 
-                // 8. LOC delta
+                // 9. LOC delta (right-aligned, LOC_WIDTH)
                 let prev_loc = previous_state.get(&node.path).map(|p| p.loc).unwrap_or(0);
                 let loc_delta = info.loc as i64 - prev_loc as i64;
                 let (loc_delta_str, loc_delta_color_name) = format_delta(loc_delta, false);
-                if !loc_delta_str.is_empty() {
-                    spans.push(Span::raw(" "));
-                    spans.push(Span::styled(
-                        loc_delta_str,
-                        Style::default().fg(color_from_name(loc_delta_color_name)),
-                    ));
-                }
+                spans.push(Span::styled(
+                    format!("{:>width$}", loc_delta_str, width = LOC_WIDTH as usize),
+                    Style::default().fg(color_from_name(loc_delta_color_name)),
+                ));
             }
         }
 
