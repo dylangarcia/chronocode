@@ -17,7 +17,13 @@ fn main() -> anyhow::Result<()> {
 
     // Handle --share mode
     if let Some(ref recording_file) = cli.share {
-        handle_share(&cli, recording_file)?;
+        handle_share(recording_file)?;
+        return Ok(());
+    }
+
+    // Handle --load mode
+    if let Some(ref data) = cli.load {
+        handle_load(data)?;
         return Ok(());
     }
 
@@ -92,7 +98,7 @@ fn handle_viewer() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn handle_share(cli: &cli::Cli, recording_file: &str) -> anyhow::Result<()> {
+fn handle_share(recording_file: &str) -> anyhow::Result<()> {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
     use flate2::write::ZlibEncoder;
@@ -106,7 +112,7 @@ fn handle_share(cli: &cli::Cli, recording_file: &str) -> anyhow::Result<()> {
 
     let raw = std::fs::read_to_string(path)?;
 
-    // Parse and strip file contents to reduce size
+    // Parse and strip file contents to reduce size.
     let mut data: serde_json::Value = serde_json::from_str(&raw)?;
     if let Some(initial) = data.get_mut("initial_state").and_then(|v| v.as_array_mut()) {
         for item in initial.iter_mut() {
@@ -125,40 +131,81 @@ fn handle_share(cli: &cli::Cli, recording_file: &str) -> anyhow::Result<()> {
 
     let json = serde_json::to_string(&data)?;
 
-    // Compress with zlib (matches pako.deflate/inflate in the browser)
+    // Compress with zlib (matches pako.deflate/inflate in the browser).
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
     encoder.write_all(json.as_bytes())?;
     let compressed = encoder.finish()?;
 
-    // Base64url encode
+    // Base64url encode.
     let encoded = URL_SAFE_NO_PAD.encode(&compressed);
 
-    // Build URL
-    let base_url = match cli.share_base_url {
-        Some(ref base) => base.clone(),
-        None => "https://your-host.com/replay.html".to_string(),
-    };
-
-    let url = format!("{}#data={}", base_url, encoded);
-
     let raw_kb = raw.len() as f64 / 1024.0;
-    let url_kb = url.len() as f64 / 1024.0;
-    let ratio = (1.0 - url_kb / raw_kb) * 100.0;
+    let encoded_kb = encoded.len() as f64 / 1024.0;
+    let ratio = (1.0 - encoded_kb / raw_kb) * 100.0;
 
     eprintln!("Recording: {} ({:.1} KB)", recording_file, raw_kb);
-    eprintln!("URL size:  {:.1} KB ({:.0}% smaller)", url_kb, ratio);
-
-    if url.len() > 100_000 {
-        eprintln!(
-            "Warning: URL is {:.0} KB -- may be too long for some browsers/services.",
-            url_kb
-        );
-    }
-
+    eprintln!("Compressed: {:.1} KB ({:.0}% smaller)", encoded_kb, ratio);
     eprintln!();
 
-    // Print the URL to stdout (so it can be piped)
-    println!("{}", url);
+    // Print a command the recipient can run to view the recording.
+    println!("chronocode --load {}", encoded);
+
+    Ok(())
+}
+
+fn handle_load(data: &str) -> anyhow::Result<()> {
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+
+    const REPLAY_HTML: &str = include_str!("../replay.html");
+
+    // Write the embedded HTML to a temp directory.
+    let tmp_dir = std::env::temp_dir().join("chronocode-viewer");
+    std::fs::create_dir_all(&tmp_dir)?;
+    std::fs::write(tmp_dir.join("index.html"), REPLAY_HTML)?;
+
+    // Pick a free port.
+    let port = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        listener.local_addr()?.port()
+    };
+
+    // Spawn a local server. Try python3 first, then npx serve.
+    let mut server = Command::new("python3")
+        .args([
+            "-m",
+            "http.server",
+            &port.to_string(),
+            "--bind",
+            "127.0.0.1",
+        ])
+        .current_dir(&tmp_dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .or_else(|_| {
+            Command::new("npx")
+                .args(["serve", "-l", &port.to_string(), "-s", "."])
+                .current_dir(&tmp_dir)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+        })
+        .map_err(|_| anyhow::anyhow!("Could not start a local server (need python3 or npx)"))?;
+
+    // Give the server a moment to bind.
+    std::thread::sleep(Duration::from_millis(300));
+
+    let url = format!("http://127.0.0.1:{}/#data={}", port, data);
+
+    println!("Opening viewer at http://127.0.0.1:{} ...", port);
+    open::that(&url)?;
+
+    // Give the browser time to load the page and all assets,
+    // then tear down the server. Once loaded, the page is self-contained.
+    std::thread::sleep(Duration::from_secs(3));
+    let _ = server.kill();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
 
     Ok(())
 }

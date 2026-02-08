@@ -63,13 +63,13 @@ pub struct Cli {
     #[arg(long = "viewer")]
     pub viewer: bool,
 
-    /// Generate a shareable URL from a recording JSON file
+    /// Generate a shareable command from a recording JSON file
     #[arg(long = "share")]
     pub share: Option<String>,
 
-    /// Base URL for share links (default: file:///path/to/replay.html)
-    #[arg(long = "share-base-url")]
-    pub share_base_url: Option<String>,
+    /// Load a shared recording and open the viewer
+    #[arg(long = "load")]
+    pub load: Option<String>,
 }
 
 impl Cli {
