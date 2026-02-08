@@ -296,6 +296,18 @@ impl App {
                     event_count
                 );
 
+                // Print a shareable command so users can send the recording.
+                match self.compress_recording(output_path) {
+                    Ok(encoded) => {
+                        println!();
+                        println!("Share this recording:");
+                        println!("  chronocode --load {}", encoded);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to generate share command: {}", e);
+                    }
+                }
+
                 if self.auto_open_viewer {
                     if let Err(e) = self.open_viewer(output_path) {
                         eprintln!("Failed to open viewer: {}", e);
