@@ -293,6 +293,8 @@ fn handle_replay(cli: &cli::Cli, replay_file: &str) -> anyhow::Result<()> {
                 cli.max_depth,
                 cli.max_files,
                 false,
+                "",
+                false,
             );
         })?;
 

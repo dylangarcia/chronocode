@@ -32,6 +32,10 @@ pub struct App {
     pub max_files: Option<usize>,
     pub refresh_interval: Duration,
     pub running: bool,
+    /// Whether the search input bar is actively accepting keystrokes.
+    pub search_active: bool,
+    /// The current search/filter query string.
+    pub search_query: String,
 }
 
 impl App {
@@ -95,6 +99,8 @@ impl App {
             max_files: cli.max_files,
             refresh_interval,
             running: true,
+            search_active: false,
+            search_query: String::new(),
         })
     }
 
@@ -223,6 +229,8 @@ impl App {
 
         loop {
             // --- Draw ---
+            let search_query = self.search_query.clone();
+            let search_active = self.search_active;
             terminal.draw(|frame| {
                 let stats = self.tracker.stats_tracker.as_ref().map(|st| st.get_stats());
                 renderer::render_ui(
@@ -236,18 +244,64 @@ impl App {
                     self.max_depth,
                     self.max_files,
                     self.show_stats,
+                    &search_query,
+                    search_active,
                 );
             })?;
 
             // --- Handle keyboard events ---
             if event::poll(Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Char('Q') => break,
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            break
+                    // Ctrl+C always quits, regardless of search state.
+                    if key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        break;
+                    }
+
+                    if self.search_active {
+                        // Search input mode: typing into the search bar.
+                        match key.code {
+                            KeyCode::Esc => {
+                                // Cancel search: clear query and deactivate.
+                                self.search_active = false;
+                                self.search_query.clear();
+                            }
+                            KeyCode::Enter => {
+                                // Confirm search: keep the filter but exit input mode.
+                                self.search_active = false;
+                            }
+                            KeyCode::Backspace => {
+                                self.search_query.pop();
+                            }
+                            KeyCode::Char(c) => {
+                                self.search_query.push(c);
+                            }
+                            _ => {}
                         }
-                        _ => {}
+                    } else if !self.search_query.is_empty() {
+                        // Filter is active but not in input mode.
+                        match key.code {
+                            KeyCode::Esc => {
+                                // Clear the filter entirely.
+                                self.search_query.clear();
+                            }
+                            KeyCode::Char('/') => {
+                                // Re-enter search input mode.
+                                self.search_active = true;
+                            }
+                            KeyCode::Char('q') | KeyCode::Char('Q') => break,
+                            _ => {}
+                        }
+                    } else {
+                        // Normal mode, no search active.
+                        match key.code {
+                            KeyCode::Char('q') | KeyCode::Char('Q') => break,
+                            KeyCode::Char('/') => {
+                                self.search_active = true;
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
