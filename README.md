@@ -1,138 +1,131 @@
-# ChronoCode 🎬
+# chronocode
 
-Record and replay file system changes in real-time. Perfect for watching AI agents build projects!
+Record and replay file system changes in real-time. A TUI for watching AI agents (or yourself) build projects.
 
-## Features
-
-- **Real-time monitoring**: Watch files and directories as they change
-- **Visual tree view**: Color-coded directory structure with file type icons
-- **Change tracking**: See created, modified, and deleted files with size/LOC deltas
-- **Session recording**: Record development sessions to JSON files
-- **Web-based replay viewer**: Replay recordings with timeline scrubbing, content preview, diff view, and code structure analysis
-- **Gitignore support**: Automatically respects `.gitignore` patterns
-
-## Installation
-
-### Using uv (recommended)
+## Install
 
 ```bash
-# Install uv if you don't have it
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Run directly without installation
-uv run chronocode.py
-
-# Or install the tool
-uv pip install -e .
+cargo install chronocode
 ```
 
-### Using pip
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+Or download a prebuilt binary from [Releases](https://github.com/dylangarcia/chronocode/releases).
 
 ## Usage
 
-### Basic Usage
+```bash
+# Watch the current directory
+chronocode
+
+# Watch a specific directory
+chronocode /path/to/project
+
+# Show hidden files, update every 500ms
+chronocode -a -i 0.5
+```
+
+Press `q` to quit. Every session is automatically recorded.
+
+When you exit, you get a clickable link to replay the session in your browser:
+
+```
+Session summary:
+  Duration: 5m 12s
+  Events:  23 created, 8 modified, 2 deleted
+
+Recording saved: recordings/recording_20260207_191500.json (33 events)
+
+  Open recording: file:///path/to/replay.html#data=...
+```
+
+## Features
+
+- **Real-time file tree** with emoji icons, sizes, and line counts
+- **Change detection** - created, modified, and deleted files highlighted with deltas
+- **Statistics dashboard** - session duration, event rate, file/dir counts
+- **Automatic recording** - every session is saved as JSON for replay
+- **Web replay viewer** - timeline scrubbing, content preview, diff view, code structure analysis
+- **Shareable URLs** - compress a recording into a URL and send it to anyone
+- **Gitignore support** - respects `.gitignore` by default
+- **Collapsible folders** in the web viewer
+
+## Recording
+
+Sessions are recorded automatically to `recordings/` in the watched directory.
 
 ```bash
-# Watch current directory
-./chronocode
+# Disable recording
+chronocode --no-record
 
-# Watch specific directory
-./chronocode /path/to/directory
+# Record to a specific file
+chronocode -r mysession.json
 
-# Show hidden files
-./chronocode -a
-
-# Update more frequently (every 0.5 seconds)
-./chronocode -i 0.5
+# Include file contents (enables preview/diff in the viewer)
+chronocode -c
 ```
 
-### Recording Sessions
+## Replay
+
+### Web viewer
+
+Open `replay.html` in your browser and drop a recording JSON onto it. Or use the link printed when a session ends.
+
+Controls: `Space` play/pause, `Arrow keys` step, `R` reset, `P` toggle preview, `S` share, click folders to collapse.
+
+### Terminal replay
 
 ```bash
-# Record a session (metadata only - small file size)
-./chronocode -r
-
-# Record with file contents (enables content preview/diff in viewer)
-./chronocode -r -c
-
-# Record to specific file
-./chronocode -r session.json /path/to/project
+chronocode --replay recordings/session.json
+chronocode --replay session.json --replay-speed 3.0
 ```
 
-### Web Replay Viewer
-
-Open `replay.html` in your browser and drag a recording JSON file onto it.
-
-Features:
-- **Timeline scrubber** with event markers
-- **Playback controls**: Play/Pause, Step, Speed adjustment
-- **File tree** with real-time updates
-- **Content preview** (if recorded with `-c`)
-- **Diff view** for modified files
-- **Structure view** showing functions/classes being worked on
-
-Keyboard shortcuts: `Space` (play/pause), `Arrow keys` (step), `R` (reset), `P` (toggle preview)
-
-### Terminal Replay
+### Share a recording
 
 ```bash
-# Replay in terminal
-./chronocode --replay session.json /path/to/project
+# Generate a shareable URL
+chronocode --share recordings/session.json
 
-# Replay at 2x speed
-./chronocode --replay session.json --replay-speed 2.0 /path/to/project
+# With a custom base URL (e.g. if you host replay.html)
+chronocode --share session.json --share-base-url "https://mysite.com/replay.html"
 ```
 
-## Command Line Options
+The URL contains the entire recording (compressed), so the recipient doesn't need the JSON file.
 
-| Option | Description |
-|--------|-------------|
-| `path` | Directory to watch (default: current directory) |
-| `-a, --all` | Show hidden files and directories |
-| `-i, --interval` | Refresh interval in seconds (default: 1.0) |
-| `-f, --max-files` | Maximum files to show per directory |
-| `-d, --max-depth` | Maximum directory depth to display |
-| `--no-gitignore` | Do not respect .gitignore files |
-| `--no-stats` | Disable the statistics dashboard |
-| `-r, --record` | Record events to a JSON file |
-| `-c, --content` | Include file contents in recording |
-| `--replay` | Replay events from a JSON file |
-| `--replay-speed` | Replay speed multiplier (default: 1.0) |
-
-## Example Output
+## Options
 
 ```
-📁 /Users/user/myproject
+Usage: chronocode [OPTIONS] [PATH]
 
-    Name                                    Status     Size     Δ Size  LOC     Δ LOC
-───────────────────────────────────────────────────────────────────────────────────────
-├── 📁 src                                  ✨ NEW                       
-│   ├── 🐍 main.py                          ✨ NEW      2.5KB            45L     
-│   ├── 🐍 utils.py                         ✏️  MOD    1.2KB    +256B   23L     +5
-│   └── 📜 helpers.js                       ✨ NEW      890B             12L     
-├── 📁 tests                                ✨ NEW                       
-│   └── 🧪 test_main.py                     ✨ NEW      450B             15L     
-└── 📝 README.md                            ✏️  MOD    1.5KB    +1.2KB  34L     +12
-───────────────────────────────────────────────────────────────────────────────────────
+Arguments:
+  [PATH]  Directory to watch [default: .]
 
-📊 4 files  📂 3 dirs  💾 5.09 KB  📄 129L lines   │ ✨ 5 new  ✏️  2 mod
+Options:
+  -a, --all                       Show hidden files and directories
+  -i, --interval <SECONDS>        Refresh interval [default: 1]
+  -f, --max-files <N>             Max files shown per directory
+  -d, --max-depth <N>             Max tree depth
+      --no-gitignore              Disable gitignore filtering
+      --no-stats                  Hide statistics dashboard
+      --no-record                 Disable automatic recording
+  -r, --record <FILE>             Record to a specific file
+  -c, --content                   Include file contents in recording
+      --replay <FILE>             Replay a recorded session
+      --replay-speed <SPEED>      Replay speed multiplier [default: 1]
+      --viewer                    Open the web replay viewer
+      --share <FILE>              Generate a shareable URL from a recording
+      --share-base-url <URL>      Base URL for share links
+  -V, --version                   Print version
+  -h, --help                      Print help
 ```
 
-## How Recording Works
+## Building from source
 
-When you use the `-r` flag, ChronoCode creates a JSON file containing:
-- Timestamps of each event
-- Event type (created, modified, deleted)
-- File path and size
-- Optionally, file contents (with `-c` flag)
+```bash
+git clone https://github.com/dylangarcia/chronocode.git
+cd chronocode
+cargo build --release
+```
 
-Recordings use relative paths, so they're safe to share without leaking your directory structure.
+The binary is at `target/release/chronocode`.
 
 ## License
 

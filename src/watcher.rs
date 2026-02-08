@@ -1,0 +1,44 @@
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use std::path::Path;
+use std::sync::mpsc;
+use std::time::Duration;
+
+pub enum WatchEvent {
+    FileChanged,
+    Error(String),
+}
+
+pub struct FileWatcher {
+    _watcher: RecommendedWatcher,
+}
+
+impl FileWatcher {
+    /// Create a new file watcher that monitors `path` recursively.
+    /// Returns the watcher and a receiver that will get `WatchEvent::FileChanged`
+    /// whenever filesystem changes are detected (debounced).
+    pub fn new(
+        path: &Path,
+        _debounce_duration: Duration,
+    ) -> anyhow::Result<(Self, mpsc::Receiver<WatchEvent>)> {
+        let (tx, rx) = mpsc::channel();
+
+        let sender = tx.clone();
+        let mut watcher =
+            notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+                match res {
+                    Ok(_event) => {
+                        // Send a generic "something changed" signal
+                        // The actual change detection is done by rescanning (like the Python version)
+                        let _ = sender.send(WatchEvent::FileChanged);
+                    }
+                    Err(e) => {
+                        let _ = sender.send(WatchEvent::Error(e.to_string()));
+                    }
+                }
+            })?;
+
+        watcher.watch(path, RecursiveMode::Recursive)?;
+
+        Ok((Self { _watcher: watcher }, rx))
+    }
+}

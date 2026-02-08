@@ -1,23 +1,10 @@
-# Python
-__pycache__/
-*.py[cod]
-*.so
-build/
-dist/
-*.egg-info/
-
-# Virtual environments
-.venv/
-venv/
+# Rust
+/target
 
 # OS
 .DS_Store
+Thumbs.db
 
 # Project specific
 recordings/
 chronocode-viewer.html
-
-# Tools
-.ruff_cache/
-.mypy_cache/
-uv.lock

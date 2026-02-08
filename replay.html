@@ -7,6 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>ChronoCode Replay</title>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -370,6 +371,40 @@
             display: inline-block;
             width: 20px;
             color: #484f58;
+        }
+
+        .tree-chevron {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            font-size: 10px;
+            color: #484f58;
+            transition: transform 0.15s ease, color 0.15s;
+            flex-shrink: 0;
+            cursor: pointer;
+            border-radius: 3px;
+            margin-right: 2px;
+        }
+
+        .tree-chevron:hover {
+            color: #c9d1d9;
+            background: #30363d;
+        }
+
+        .tree-chevron.expanded {
+            transform: rotate(90deg);
+        }
+
+        .tree-chevron.collapsed {
+            transform: rotate(0deg);
+        }
+
+        .tree-chevron-spacer {
+            display: inline-block;
+            width: 18px;
+            flex-shrink: 0;
         }
 
         .tree-icon {
@@ -812,6 +847,104 @@
             color: #8b949e;
         }
 
+        /* Share toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #238636;
+            color: #fff;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            z-index: 1000;
+            opacity: 0;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .toast.visible {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast.error {
+            background: #f85149;
+        }
+
+        /* Share modal */
+        .share-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .share-overlay.visible {
+            display: flex;
+        }
+
+        .share-modal {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 520px;
+            width: 90%;
+        }
+
+        .share-modal h3 {
+            color: #58a6ff;
+            font-size: 15px;
+            margin-bottom: 12px;
+        }
+
+        .share-modal p {
+            color: #8b949e;
+            font-size: 12px;
+            margin-bottom: 12px;
+        }
+
+        .share-url-box {
+            display: flex;
+            gap: 8px;
+        }
+
+        .share-url-box input {
+            flex: 1;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            padding: 8px 12px;
+            font-family: inherit;
+            font-size: 12px;
+        }
+
+        .share-url-box input:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+
+        .share-size {
+            color: #484f58;
+            font-size: 11px;
+            margin-top: 8px;
+        }
+
+        .share-size.warn {
+            color: #d29922;
+        }
+
+        .share-size.error {
+            color: #f85149;
+        }
+
         /* Responsive: Stack on small screens */
         @media (max-width: 900px) {
             .player {
@@ -878,6 +1011,7 @@
                 </select>
                 <button class="btn" id="resetBtn" title="Reset (R)">Reset</button>
                 <button class="btn" id="togglePreviewBtn" title="Toggle Preview (P)">Preview</button>
+                <button class="btn" id="shareBtn" title="Share recording URL (S)">Share</button>
                 <button class="btn" id="loadNewBtn" title="Load new file">Load New</button>
             </div>
         </div>
@@ -934,6 +1068,24 @@
             <span><kbd>&#8592;</kbd><kbd>&#8594;</kbd> Step</span>
             <span><kbd>R</kbd> Reset</span>
             <span><kbd>P</kbd> Toggle Preview</span>
+            <span><kbd>S</kbd> Share</span>
+            <span>Click folder to collapse/expand</span>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Share modal -->
+    <div class="share-overlay" id="shareOverlay">
+        <div class="share-modal">
+            <h3>Share Recording</h3>
+            <p>Anyone with this URL can view the recording in their browser.</p>
+            <div class="share-url-box">
+                <input type="text" id="shareUrlInput" readonly>
+                <button class="btn btn-primary" id="copyShareBtn">Copy</button>
+            </div>
+            <div class="share-size" id="shareSize"></div>
         </div>
     </div>
 
@@ -946,6 +1098,8 @@
                 this.resetUI();
                 // Bind event handlers
                 this.bindEvents();
+                // Auto-load from URL hash if present
+                this.loadFromUrlHash();
             }
             
             resetUI() {
@@ -964,6 +1118,8 @@
                 this.showPreview = false;
                 this.isDragging = false;
                 this.activeTab = 'content';
+                this.collapsedFolders = new Set();
+                this.rawData = null;
                 
                 // Stop any running playback
                 if (this.playbackTimer) {
@@ -1046,6 +1202,13 @@
                 this.statCreated = document.getElementById('statCreated');
                 this.statModified = document.getElementById('statModified');
                 this.statDeleted = document.getElementById('statDeleted');
+
+                this.shareBtn = document.getElementById('shareBtn');
+                this.shareOverlay = document.getElementById('shareOverlay');
+                this.shareUrlInput = document.getElementById('shareUrlInput');
+                this.copyShareBtn = document.getElementById('copyShareBtn');
+                this.shareSize = document.getElementById('shareSize');
+                this.toast = document.getElementById('toast');
             }
 
             bindEvents() {
@@ -1084,6 +1247,13 @@
                     }
                 });
                 
+                // Share
+                this.shareBtn.addEventListener('click', () => this.showShareModal());
+                this.copyShareBtn.addEventListener('click', () => this.copyShareUrl());
+                this.shareOverlay.addEventListener('click', (e) => {
+                    if (e.target === this.shareOverlay) this.shareOverlay.classList.remove('visible');
+                });
+
                 // Scrubber
                 this.scrubberTrack.addEventListener('mousedown', (e) => this.startScrubbing(e));
                 document.addEventListener('mousemove', (e) => this.scrub(e));
@@ -1124,6 +1294,14 @@
                         case 'P':
                             e.preventDefault();
                             this.togglePreview();
+                            break;
+                        case 's':
+                        case 'S':
+                            e.preventDefault();
+                            this.showShareModal();
+                            break;
+                        case 'Escape':
+                            this.shareOverlay.classList.remove('visible');
                             break;
                     }
                 });
@@ -1166,6 +1344,7 @@
             }
 
             loadSession(data) {
+                this.rawData = data;
                 this.initialState = data.initial_state || [];
                 this.events = data.events || [];
                 
@@ -1536,8 +1715,9 @@
                 });
                 
                 for (const child of sorted) {
-                    result.push({ ...child, depth });
-                    if (child.isDir && child.children.size > 0) {
+                    const isCollapsed = child.isDir && child.path && this.collapsedFolders.has(child.path);
+                    result.push({ ...child, depth, isCollapsed });
+                    if (child.isDir && child.children.size > 0 && !isCollapsed) {
                         this.flattenTree(child, depth + 1, result);
                     }
                 }
@@ -1550,11 +1730,20 @@
                 for (let i = 0; i < item.depth; i++) {
                     indent += '<span class="tree-indent"></span>';
                 }
+                let chevronHtml;
+                if (item.isDir && item.children && item.children.size > 0) {
+                    const chevronClass = item.isCollapsed ? 'collapsed' : 'expanded';
+                    chevronHtml = `<span class="tree-chevron ${chevronClass}" data-toggle-path="${item.path}">&#9654;</span>`;
+                } else if (item.isDir) {
+                    chevronHtml = '<span class="tree-chevron-spacer"></span>';
+                } else {
+                    chevronHtml = '<span class="tree-chevron-spacer"></span>';
+                }
                 const icon = this.getFileIcon(item.name, item.isDir);
                 const size = item.isDir ? '' : this.formatSize(item.size || 0);
                 const statusHtml = item.status ? 
                     `<span class="tree-status ${item.status}">${item.status.substring(0, 3).toUpperCase()}</span>` : '';
-                return `${indent}<span class="tree-icon">${icon}</span><span class="tree-name ${item.isDir ? 'is-dir' : ''}">${item.name}</span><span class="tree-size">${size}</span>${statusHtml}`;
+                return `${indent}${chevronHtml}<span class="tree-icon">${icon}</span><span class="tree-name ${item.isDir ? 'is-dir' : ''}">${item.name}</span><span class="tree-size">${size}</span>${statusHtml}`;
             }
 
             updateDisplay() {
@@ -1589,11 +1778,25 @@
                         row.className = 'tree-row';
                         row.dataset.path = item.path;
                         row.innerHTML = this.renderRowContent(item);
-                        row.addEventListener('click', () => this.selectFile(item.path));
-                    } else if (isRecentlyChanged) {
-                        // Update existing row content
+                        row.addEventListener('click', (e) => {
+                            // If user clicked the chevron or a directory row, toggle collapse
+                            const chevron = e.target.closest('.tree-chevron');
+                            if (chevron) {
+                                e.stopPropagation();
+                                this.toggleFolder(item.path);
+                                return;
+                            }
+                            if (item.isDir) {
+                                this.toggleFolder(item.path);
+                            } else {
+                                this.selectFile(item.path);
+                            }
+                        });
+                    } else if (isRecentlyChanged || row.dataset.collapsed !== String(!!item.isCollapsed)) {
+                        // Update existing row content (changed or collapse state changed)
                         row.innerHTML = this.renderRowContent(item);
                     }
+                    row.dataset.collapsed = String(!!item.isCollapsed);
                     
                     orderedRows.push(row);
                     
@@ -1634,6 +1837,15 @@
                 this.selectedFile = path;
                 this.updateDisplay();
                 this.updateContentPreview();
+            }
+
+            toggleFolder(path) {
+                if (this.collapsedFolders.has(path)) {
+                    this.collapsedFolders.delete(path);
+                } else {
+                    this.collapsedFolders.add(path);
+                }
+                this.updateDisplay();
             }
 
             togglePreview() {
@@ -2070,6 +2282,133 @@
                 }
 
                 return activity;
+            }
+
+            // ----- Sharing -----
+
+            showToast(message, isError = false) {
+                this.toast.textContent = message;
+                this.toast.classList.toggle('error', isError);
+                this.toast.classList.add('visible');
+                clearTimeout(this._toastTimer);
+                this._toastTimer = setTimeout(() => {
+                    this.toast.classList.remove('visible');
+                }, 3000);
+            }
+
+            compressData(data) {
+                const json = JSON.stringify(data);
+                const compressed = pako.deflate(json);
+                // Convert to base64url
+                let binary = '';
+                for (let i = 0; i < compressed.length; i++) {
+                    binary += String.fromCharCode(compressed[i]);
+                }
+                return btoa(binary)
+                    .replace(/\+/g, '-')
+                    .replace(/\//g, '_')
+                    .replace(/=+$/, '');
+            }
+
+            decompressData(encoded) {
+                // Restore standard base64
+                let b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+                while (b64.length % 4) b64 += '=';
+                const binary = atob(b64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                const json = pako.inflate(bytes, { to: 'string' });
+                return JSON.parse(json);
+            }
+
+            showShareModal() {
+                if (!this.rawData) {
+                    this.showToast('No recording loaded', true);
+                    return;
+                }
+
+                try {
+                    // Strip file content to keep URLs shorter -- keep structure but drop bulk
+                    const stripped = this.stripContentForShare(this.rawData);
+                    const encoded = this.compressData(stripped);
+                    const baseUrl = window.location.origin + window.location.pathname;
+                    const url = `${baseUrl}#data=${encoded}`;
+
+                    this.shareUrlInput.value = url;
+
+                    const kb = (url.length / 1024).toFixed(1);
+                    const sizeEl = this.shareSize;
+                    sizeEl.textContent = `URL size: ${kb} KB`;
+                    sizeEl.className = 'share-size';
+
+                    if (url.length > 100000) {
+                        sizeEl.textContent += ' — Very large URL, may not work in all browsers.';
+                        sizeEl.className = 'share-size error';
+                    } else if (url.length > 50000) {
+                        sizeEl.textContent += ' — Large URL, may be truncated by some services.';
+                        sizeEl.className = 'share-size warn';
+                    }
+
+                    this.shareOverlay.classList.add('visible');
+                    this.shareUrlInput.select();
+                } catch (e) {
+                    this.showToast('Failed to generate share URL: ' + e.message, true);
+                }
+            }
+
+            stripContentForShare(data) {
+                // Remove file contents from initial_state and events to shrink the URL.
+                // Keep everything else (paths, sizes, event types, timestamps).
+                const stripped = { ...data };
+                if (stripped.initial_state) {
+                    stripped.initial_state = stripped.initial_state.map(item => {
+                        const { content, ...rest } = item;
+                        return rest;
+                    });
+                }
+                if (stripped.events) {
+                    stripped.events = stripped.events.map(event => {
+                        const { content, ...rest } = event;
+                        return rest;
+                    });
+                }
+                return stripped;
+            }
+
+            async copyShareUrl() {
+                try {
+                    await navigator.clipboard.writeText(this.shareUrlInput.value);
+                    this.showToast('URL copied to clipboard!');
+                    this.shareOverlay.classList.remove('visible');
+                } catch (e) {
+                    // Fallback for older browsers
+                    this.shareUrlInput.select();
+                    document.execCommand('copy');
+                    this.showToast('URL copied to clipboard!');
+                    this.shareOverlay.classList.remove('visible');
+                }
+            }
+
+            loadFromUrlHash() {
+                const hash = window.location.hash;
+                if (!hash || !hash.startsWith('#data=')) return false;
+
+                const encoded = hash.slice(6); // strip '#data='
+                if (!encoded) return false;
+
+                try {
+                    const data = this.decompressData(encoded);
+                    this.loadSession(data);
+                    // Clear hash so refreshing doesn't re-trigger and URL bar is cleaner
+                    history.replaceState(null, '', window.location.pathname + window.location.search);
+                    return true;
+                } catch (e) {
+                    console.error('Failed to load recording from URL:', e);
+                    this.showToast('Failed to load recording from URL', true);
+                    return false;
+                }
             }
         }
 

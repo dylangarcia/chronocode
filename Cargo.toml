@@ -1,0 +1,62 @@
+[package]
+name = "chronocode"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Watch directory structure and file changes in real-time with a beautiful TUI"
+license = "MIT"
+repository = "https://github.com/dylangarcia/chronocode"
+homepage = "https://github.com/dylangarcia/chronocode"
+readme = "README.md"
+keywords = ["tui", "file-watcher", "developer-tools", "recording", "ratatui"]
+categories = ["command-line-utilities", "development-tools", "filesystem"]
+exclude = [
+    "recordings/",
+    "chronocode-viewer.html",
+    ".github/",
+]
+
+[[bin]]
+name = "chronocode"
+path = "src/main.rs"
+
+[dependencies]
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# File watching
+notify = "7"
+notify-debouncer-mini = "0.5"
+
+# File traversal
+walkdir = "2"
+globset = "0.4"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Time
+chrono = "0.4"
+
+# Unicode
+unicode-width = "0.2"
+
+# Error handling
+anyhow = "1"
+
+# Opening files in browser
+open = "5"
+
+# Sharing (compress + base64 for URL encoding)
+flate2 = "1"
+base64 = "0.22"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
